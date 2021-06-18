@@ -122,8 +122,19 @@ class SpERT(BertPreTrainedModel):
 
     def _classify_entities(self, encodings, h, entity_masks, size_embeddings):
         # max pool entity candidate spans
+        # entity_masks  (batch_size, pos_entities + negative examples, max_length)
+        #               (2,          103,                              25)
+        # m             (batch_size, pos_entities + negative examples, max_length, 1)
+        # h             (batch_size, max_length, embed_dim)
+        #               (2, 25, 768)
         m = (entity_masks.unsqueeze(-1) == 0).float() * (-1e30)
+
+        # entity_spans_pool  (batch_size, pos_entities + negative examples, max_length, embed_dim)
+        #                    (2,          103,                              25, 768)
         entity_spans_pool = m + h.unsqueeze(1).repeat(1, entity_masks.shape[1], 1, 1)
+
+        # entity_spans_pool  (batch_size, pos_entities + negative examples, embed_dim)
+        #                    (2,          103,                              768)
         entity_spans_pool = entity_spans_pool.max(dim=2)[0]
 
         # get cls token as candidate context representation
