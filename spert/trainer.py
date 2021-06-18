@@ -64,6 +64,11 @@ class BaseTrainer:
 
         # CUDA devices
         self._device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
+
+        # KL
+        if args.device is not None:
+            self._device = args.device
+
         self._gpu_count = torch.cuda.device_count()
 
         # set seed

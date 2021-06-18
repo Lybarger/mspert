@@ -37,6 +37,8 @@ def _add_common_args(arg_parser):
                             help="Path to cache transformer models (for HuggingFace transformers library)")
     arg_parser.add_argument('--debug', action='store_true', default=False, help="Debugging mode on/off")
 
+    # KL
+    arg_parser.add_argument('--device', type=int, default=None, help="GPU device")
 
 def _add_logging_args(arg_parser):
     arg_parser.add_argument('--label', type=str, help="Label of run. Used as the directory name of logs/models")
@@ -78,6 +80,7 @@ def train_argparser():
                             help="Proportion of total train iterations to warmup in linear increase/decrease schedule")
     arg_parser.add_argument('--weight_decay', type=float, default=0.01, help="Weight decay to apply")
     arg_parser.add_argument('--max_grad_norm', type=float, default=1.0, help="Maximum gradient norm")
+
 
     _add_common_args(arg_parser)
     _add_logging_args(arg_parser)
