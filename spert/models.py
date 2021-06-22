@@ -26,9 +26,10 @@ class SpERT(BertPreTrainedModel):
 
     VERSION = '1.1'
 
-    def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int,
+    def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int,
                  size_embedding: int, prop_drop: float, freeze_transformer: bool, max_pairs: int = 100):
         super(SpERT, self).__init__(config)
+
 
         # BERT model
         self.bert = BertModel(config)
@@ -36,12 +37,17 @@ class SpERT(BertPreTrainedModel):
         # layers
         self.rel_classifier = nn.Linear(config.hidden_size * 3 + size_embedding * 2, relation_types)
         self.entity_classifier = nn.Linear(config.hidden_size * 2 + size_embedding, entity_types)
+
+        self.subtype_classifier = nn.Linear(config.hidden_size * 2 + size_embedding + entity_types, subtypes)
+
+
         self.size_embeddings = nn.Embedding(100, size_embedding)
         self.dropout = nn.Dropout(prop_drop)
 
         self._cls_token = cls_token
         self._relation_types = relation_types
         self._entity_types = entity_types
+        self._subtypes = subtypes
         self._max_pairs = max_pairs
 
         # weight initialization
@@ -64,7 +70,7 @@ class SpERT(BertPreTrainedModel):
 
         # classify entities
         size_embeddings = self.size_embeddings(entity_sizes)  # embed entity candidate sizes
-        entity_clf, entity_spans_pool = self._classify_entities(encodings, h, entity_masks, size_embeddings)
+        entity_clf, subtype_clf, entity_spans_pool = self._classify_entities(encodings, h, entity_masks, size_embeddings)
 
         # classify relations
         h_large = h.unsqueeze(1).repeat(1, max(min(relations.shape[1], self._max_pairs), 1), 1, 1)
@@ -79,7 +85,7 @@ class SpERT(BertPreTrainedModel):
                                                         relations, rel_masks, h_large, i)
             rel_clf[:, i:i + self._max_pairs, :] = chunk_rel_logits
 
-        return entity_clf, rel_clf
+        return entity_clf, subtype_clf, rel_clf
 
     def _forward_inference(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor,
                            entity_sizes: torch.tensor, entity_spans: torch.tensor, entity_sample_masks: torch.tensor):
@@ -92,7 +98,7 @@ class SpERT(BertPreTrainedModel):
 
         # classify entities
         size_embeddings = self.size_embeddings(entity_sizes)  # embed entity candidate sizes
-        entity_clf, entity_spans_pool = self._classify_entities(encodings, h, entity_masks, size_embeddings)
+        entity_clf, subtype_clf, entity_spans_pool = self._classify_entities(encodings, h, entity_masks, size_embeddings)
 
         # ignore entity candidates that do not constitute an actual entity for relations (based on classifier)
         relations, rel_masks, rel_sample_masks = self._filter_spans(entity_clf, entity_spans,
@@ -118,7 +124,7 @@ class SpERT(BertPreTrainedModel):
         # apply softmax
         entity_clf = torch.softmax(entity_clf, dim=2)
 
-        return entity_clf, rel_clf, relations
+        return entity_clf, subtype_clf, rel_clf, relations
 
     def _classify_entities(self, encodings, h, entity_masks, size_embeddings):
         # max pool entity candidate spans
@@ -148,7 +154,10 @@ class SpERT(BertPreTrainedModel):
         # classify entity candidates
         entity_clf = self.entity_classifier(entity_repr)
 
-        return entity_clf, entity_spans_pool
+        entity_repr_aug = torch.cat([entity_repr, entity_clf], dim=2)
+        subtype_clf = self.subtype_classifier(entity_repr_aug)
+
+        return entity_clf, subtype_clf, entity_spans_pool
 
     def _classify_relations(self, entity_spans, size_embeddings, relations, rel_masks, h, chunk_start):
         batch_size = relations.shape[0]

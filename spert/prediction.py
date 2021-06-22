@@ -7,7 +7,7 @@ from spert import util
 from spert.input_reader import BaseInputReader
 
 
-def convert_predictions(batch_entity_clf: torch.tensor, batch_rel_clf: torch.tensor,
+def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
                         batch_rels: torch.tensor, batch: dict, rel_filter_threshold: float,
                         input_reader: BaseInputReader, no_overlapping: bool = False):
     # get maximum activation (index of predicted entity type)
@@ -15,40 +15,64 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_rel_clf: torch.ten
     # apply entity sample mask
     batch_entity_types *= batch['entity_sample_masks'].long()
 
+    # get maximum activation (index of predicted entity type)
+    batch_subtypes = batch_subtype_clf.argmax(dim=-1)
+    # apply entity sample mask
+    batch_subtypes *= batch['entity_sample_masks'].long()
+
+
     # apply threshold to relations
     batch_rel_clf[batch_rel_clf < rel_filter_threshold] = 0
 
     batch_pred_entities = []
+    batch_pred_subtypes = []
     batch_pred_relations = []
 
     for i in range(batch_rel_clf.shape[0]):
         # get model predictions for sample
         entity_types = batch_entity_types[i]
+        subtypes = batch_subtypes[i]
+
         entity_spans = batch['entity_spans'][i]
+
         entity_clf = batch_entity_clf[i]
+        subtype_clf = batch_subtype_clf[i]
+
         rel_clf = batch_rel_clf[i]
         rels = batch_rels[i]
 
         # convert predicted entities
         sample_pred_entities = _convert_pred_entities(entity_types, entity_spans,
-                                                      entity_clf, input_reader)
+                                                      entity_clf, input_reader,
+                                                      is_entity=True)
+
+        sample_pred_subtypes = _convert_pred_entities(subtypes, entity_spans,
+                                                      subtype_clf, input_reader,
+                                                      is_entity=False)
 
         # convert predicted relations
         sample_pred_relations = _convert_pred_relations(rel_clf, rels,
                                                         entity_types, entity_spans, input_reader)
 
         if no_overlapping:
+            sample_pred_subtypes, _ = remove_overlapping(sample_pred_subtypes,
+                                                            sample_pred_relations)
+
             sample_pred_entities, sample_pred_relations = remove_overlapping(sample_pred_entities,
                                                                              sample_pred_relations)
 
+
+
         batch_pred_entities.append(sample_pred_entities)
+        batch_pred_subtypes.append(sample_pred_subtypes)
         batch_pred_relations.append(sample_pred_relations)
 
-    return batch_pred_entities, batch_pred_relations
+    return batch_pred_entities, batch_pred_subtypes, batch_pred_relations
 
 
 def _convert_pred_entities(entity_types: torch.tensor, entity_spans: torch.tensor,
-                           entity_scores: torch.tensor, input_reader: BaseInputReader):
+                           entity_scores: torch.tensor, input_reader: BaseInputReader,
+                           is_entity=True):
     # get entities that are not classified as 'None'
     valid_entity_indices = entity_types.nonzero().view(-1)
     pred_entity_types = entity_types[valid_entity_indices]
@@ -60,7 +84,11 @@ def _convert_pred_entities(entity_types: torch.tensor, entity_spans: torch.tenso
     converted_preds = []
     for i in range(pred_entity_types.shape[0]):
         label_idx = pred_entity_types[i].item()
-        entity_type = input_reader.get_entity_type(label_idx)
+
+        if is_entity:
+            entity_type = input_reader.get_entity_type(label_idx)
+        else:
+            entity_type = input_reader.get_subtype(label_idx)
 
         start, end = pred_entity_spans[i].tolist()
         score = pred_entity_scores[i].item()
@@ -160,23 +188,33 @@ def _adjust_rel(rel: Tuple):
     return adjusted_rel
 
 
-def store_predictions(documents, pred_entities, pred_relations, store_path):
+def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, store_path):
     predictions = []
 
     for i, doc in enumerate(documents):
         tokens = doc.tokens
         sample_pred_entities = pred_entities[i]
+        sample_pred_subtypes = pred_subtypes[i]
         sample_pred_relations = pred_relations[i]
 
         # convert entities
         converted_entities = []
-        for entity in sample_pred_entities:
+        for j, entity in enumerate(sample_pred_entities):
             entity_span = entity[:2]
             span_tokens = util.get_span_tokens(tokens, entity_span)
             entity_type = entity[2].identifier
             converted_entity = dict(type=entity_type, start=span_tokens[0].index, end=span_tokens[-1].index + 1)
             converted_entities.append(converted_entity)
         converted_entities = sorted(converted_entities, key=lambda e: e['start'])
+
+        converted_subtypes = []
+        for j, subtype in enumerate(sample_pred_subtypes):
+            subtype_span = subtype[:2]
+            span_tokens = util.get_span_tokens(tokens, subtype_span)
+            subtype_type = subtype[2].identifier
+            converted_subtype = dict(type=subtype_type, start=span_tokens[0].index, end=span_tokens[-1].index + 1)
+            converted_subtypes.append(converted_subtype)
+        converted_subtypes = sorted(converted_subtypes, key=lambda e: e['start'])
 
         # convert relations
         converted_relations = []
@@ -200,10 +238,15 @@ def store_predictions(documents, pred_entities, pred_relations, store_path):
             converted_relations.append(converted_relation)
         converted_relations = sorted(converted_relations, key=lambda r: r['head'])
 
-        doc_predictions = dict(tokens=[t.phrase for t in tokens], entities=converted_entities,
-                               relations=converted_relations)
+        doc_predictions = dict( \
+                                tokens = [t.phrase for t in tokens],
+                                entities = converted_entities,
+                                subtypes = converted_subtypes,
+                                relations = converted_relations)
         predictions.append(doc_predictions)
 
     # store as json
     with open(store_path, 'w') as predictions_file:
         json.dump(predictions, predictions_file)
+
+    return predictions

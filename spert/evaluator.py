@@ -38,19 +38,24 @@ class Evaluator:
         self._gt_entities = []  # ground truth
         self._pred_entities = []  # prediction
 
+        self._gt_subtypes = []  # ground truth
+        self._pred_subtypes = []  # prediction
+
         self._pseudo_entity_type = EntityType('Entity', 1, 'Entity', 'Entity')  # for span only evaluation
 
         self._convert_gt(self._dataset.documents)
 
-    def eval_batch(self, batch_entity_clf: torch.tensor, batch_rel_clf: torch.tensor,
+    def eval_batch(self, batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
                    batch_rels: torch.tensor, batch: dict):
-        batch_pred_entities, batch_pred_relations = prediction.convert_predictions(batch_entity_clf, batch_rel_clf,
-                                                                                   batch_rels, batch,
-                                                                                   self._rel_filter_threshold,
-                                                                                   self._input_reader,
-                                                                                   no_overlapping=self._no_overlapping)
+        batch_pred_entities, batch_pred_subtypes, batch_pred_relations = prediction.convert_predictions( \
+                                batch_entity_clf, batch_subtype_clf, batch_rel_clf,
+                                batch_rels, batch,
+                                self._rel_filter_threshold,
+                                self._input_reader,
+                                no_overlapping=self._no_overlapping)
 
         self._pred_entities.extend(batch_pred_entities)
+        self._pred_subtypes.extend(batch_pred_subtypes)
         self._pred_relations.extend(batch_pred_relations)
 
     def compute_scores(self):
@@ -62,6 +67,14 @@ class Evaluator:
         print("")
         gt, pred = self._convert_by_setting(self._gt_entities, self._pred_entities, include_entity_types=True)
         ner_eval = self._score(gt, pred, print_results=True)
+
+        print("")
+        print("--- Subtypes (named entity recognition (NER)) ---")
+        print("An entity is considered correct if the entity type and span is predicted correctly")
+        print("")
+        gt, pred = self._convert_by_setting(self._gt_subtypes, self._pred_subtypes, include_entity_types=True)
+        ner_eval_st = self._score(gt, pred, print_results=True)
+
 
         print("")
         print("--- Relations ---")
@@ -81,11 +94,16 @@ class Evaluator:
         gt, pred = self._convert_by_setting(self._gt_relations, self._pred_relations, include_entity_types=True)
         rel_nec_eval = self._score(gt, pred, print_results=True)
 
-        return ner_eval, rel_eval, rel_nec_eval
+        return ner_eval, ner_eval_st, rel_eval, rel_nec_eval
 
     def store_predictions(self):
-        prediction.store_predictions(self._dataset.documents, self._pred_entities,
-                                     self._pred_relations, self._predictions_path)
+        prediction.store_predictions( \
+                        documents = self._dataset.documents,
+                        pred_entities = self._pred_entities,
+                        pred_subtypes = self._pred_subtypes,
+                        pred_relations = self._pred_relations,
+                        store_path = self._predictions_path)
+
 
     def store_examples(self):
         if jinja2 is None:
@@ -148,16 +166,21 @@ class Evaluator:
         for doc in docs:
             gt_relations = doc.relations
             gt_entities = doc.entities
+            gt_subtypes = doc.subtypes
 
             # convert ground truth relations and entities for precision/recall/f1 evaluation
             sample_gt_entities = [entity.as_tuple() for entity in gt_entities]
+            sample_gt_subtypes = [subtype.as_tuple() for subtype in gt_subtypes]
             sample_gt_relations = [rel.as_tuple() for rel in gt_relations]
 
             if self._no_overlapping:
+                sample_gt_subtypes, _ = prediction.remove_overlapping(sample_gt_subtypes,
+                                                                                        sample_gt_relations)
                 sample_gt_entities, sample_gt_relations = prediction.remove_overlapping(sample_gt_entities,
                                                                                         sample_gt_relations)
 
             self._gt_entities.append(sample_gt_entities)
+            self._gt_subtypes.append(sample_gt_subtypes)
             self._gt_relations.append(sample_gt_relations)
 
     def _convert_by_setting(self, gt: List[List[Tuple]], pred: List[List[Tuple]],

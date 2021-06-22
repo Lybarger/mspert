@@ -17,14 +17,23 @@ class SpERTLoss(Loss):
         self._scheduler = scheduler
         self._max_grad_norm = max_grad_norm
 
-    def compute(self, entity_logits, rel_logits, entity_types, rel_types, entity_sample_masks, rel_sample_masks):
+
+    def compute(self, entity_logits, subtype_logits, rel_logits, entity_types, subtypes, rel_types, entity_sample_masks, rel_sample_masks):
+
         # entity loss
         entity_logits = entity_logits.view(-1, entity_logits.shape[-1])
+        subtype_logits = subtype_logits.view(-1, subtype_logits.shape[-1])
+
         entity_types = entity_types.view(-1)
+        subtypes = subtypes.view(-1)
+
         entity_sample_masks = entity_sample_masks.view(-1).float()
 
         entity_loss = self._entity_criterion(entity_logits, entity_types)
-        entity_loss = (entity_loss * entity_sample_masks).sum() / entity_sample_masks.sum()
+        subtype_loss = self._entity_criterion(subtype_logits, subtypes)
+
+        entity_loss =  (entity_loss  * entity_sample_masks).sum() / entity_sample_masks.sum()
+        subtype_loss = (subtype_loss * entity_sample_masks).sum() / entity_sample_masks.sum()
 
         # relation loss
         rel_sample_masks = rel_sample_masks.view(-1).float()
@@ -39,10 +48,10 @@ class SpERTLoss(Loss):
             rel_loss = (rel_loss * rel_sample_masks).sum() / rel_count
 
             # joint loss
-            train_loss = entity_loss + rel_loss
+            train_loss = entity_loss + subtype_loss + rel_loss
         else:
             # corner case: no positive/negative relation samples
-            train_loss = entity_loss
+            train_loss = entity_loss + subtype_loss
 
         train_loss.backward()
         torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._max_grad_norm)

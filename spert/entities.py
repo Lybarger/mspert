@@ -201,6 +201,8 @@ class Entity:
         return self._phrase
 
 
+
+
 class Relation:
     def __init__(self, rid: int, relation_type: RelationType, head_entity: Entity,
                  tail_entity: Entity, reverse: bool = False):
@@ -259,12 +261,13 @@ class Relation:
 
 
 class Document:
-    def __init__(self, doc_id: int, tokens: List[Token], entities: List[Entity], relations: List[Relation],
+    def __init__(self, doc_id: int, tokens: List[Token], entities: List[Entity], subtypes: List[Entity], relations: List[Relation],
                  encoding: List[int]):
         self._doc_id = doc_id  # ID within the corresponding dataset
 
         self._tokens = tokens
         self._entities = entities
+        self._subtypes = subtypes
         self._relations = relations
 
         # byte-pair document encoding including special tokens ([CLS] and [SEP])
@@ -277,6 +280,10 @@ class Document:
     @property
     def entities(self):
         return self._entities
+
+    @property
+    def subtypes(self):
+        return self._subtypes
 
     @property
     def relations(self):
@@ -334,11 +341,12 @@ class Dataset(TorchDataset):
     TRAIN_MODE = 'train'
     EVAL_MODE = 'eval'
 
-    def __init__(self, label, rel_types, entity_types, neg_entity_count,
+    def __init__(self, label, rel_types, entity_types, subtypes, neg_entity_count,
                  neg_rel_count, max_span_size):
         self._label = label
         self._rel_types = rel_types
         self._entity_types = entity_types
+        self._subtypes = subtypes
         self._neg_entity_count = neg_entity_count
         self._neg_rel_count = neg_rel_count
         self._max_span_size = max_span_size
@@ -346,6 +354,7 @@ class Dataset(TorchDataset):
 
         self._documents = OrderedDict()
         self._entities = OrderedDict()
+        self._subtypes = OrderedDict()
         self._relations = OrderedDict()
 
         # current ids
@@ -365,18 +374,20 @@ class Dataset(TorchDataset):
         self._tid += 1
         return token
 
-    def create_document(self, tokens, entity_mentions, relations, doc_encoding) -> Document:
-        document = Document(self._doc_id, tokens, entity_mentions, relations, doc_encoding)
+    def create_document(self, tokens, entity_mentions, subtype_mentions, relations, doc_encoding) -> Document:
+        document = Document(self._doc_id, tokens, entity_mentions, subtype_mentions, relations, doc_encoding)
         self._documents[self._doc_id] = document
         self._doc_id += 1
 
         return document
 
-    def create_entity(self, entity_type, tokens, phrase) -> Entity:
-        mention = Entity(self._eid, entity_type, tokens, phrase)
-        self._entities[self._eid] = mention
+    def create_entity(self, entity_type, subtype, tokens, phrase) -> (Entity, Entity):
+        entity_mention =  Entity(self._eid, entity_type, tokens, phrase)
+        subtype_mention = Entity(self._eid, subtype, tokens, phrase)
+        self._entities[self._eid] = entity_mention
+        self._subtypes[self._eid] = subtype_mention
         self._eid += 1
-        return mention
+        return (entity_mention, subtype_mention)
 
     def create_relation(self, relation_type, head_entity, tail_entity, reverse=False) -> Relation:
         relation = Relation(self._rid, relation_type, head_entity, tail_entity, reverse)
@@ -416,6 +427,10 @@ class Dataset(TorchDataset):
         return list(self._entities.values())
 
     @property
+    def subtypes(self):
+        return list(self._subtypes.values())
+
+    @property
     def relations(self):
         return list(self._relations.values())
 
@@ -426,6 +441,10 @@ class Dataset(TorchDataset):
     @property
     def entity_count(self):
         return len(self._entities)
+
+    @property
+    def subtype_count(self):
+        return len(self._subtypes)
 
     @property
     def relation_count(self):

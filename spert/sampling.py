@@ -18,6 +18,10 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
         pos_entity_masks.append(create_entity_mask(*e.span, context_size))
         pos_entity_sizes.append(len(e.tokens))
 
+    pos_subtypes = []
+    for s in doc.subtypes:
+        pos_subtypes.append(s.entity_type.index)
+
     # positive relations
 
     # collect relations between entity pairs
@@ -58,6 +62,8 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
     neg_entity_masks = [create_entity_mask(*span, context_size) for span in neg_entity_spans]
     neg_entity_types = [0] * len(neg_entity_spans)
 
+    neg_subtypes = [0] * len(neg_entity_spans)
+
     # negative relations
     # use only strong negative relations, i.e. pairs of actual (labeled) entities that are not related
     neg_rel_spans = []
@@ -82,11 +88,13 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
     entity_masks = pos_entity_masks + neg_entity_masks
     entity_sizes = pos_entity_sizes + list(neg_entity_sizes)
 
+    subtypes = pos_subtypes + neg_subtypes
+
     rels = pos_rels + neg_rels
     rel_types = pos_rel_types + neg_rel_types
     rel_masks = pos_rel_masks + neg_rel_masks
 
-    assert len(entity_masks) == len(entity_sizes) == len(entity_types)
+    assert len(entity_masks) == len(entity_sizes) == len(entity_types) == len(subtypes)
     assert len(rels) == len(rel_masks) == len(rel_types)
 
     # create tensors
@@ -105,12 +113,16 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
         entity_masks = torch.stack(entity_masks)
         entity_sizes = torch.tensor(entity_sizes, dtype=torch.long)
         entity_sample_masks = torch.ones([entity_masks.shape[0]], dtype=torch.bool)
+
+        subtypes = torch.tensor(subtypes, dtype=torch.long)
     else:
         # corner case handling (no pos/neg entities)
         entity_types = torch.zeros([1], dtype=torch.long)
         entity_masks = torch.zeros([1, context_size], dtype=torch.bool)
         entity_sizes = torch.zeros([1], dtype=torch.long)
         entity_sample_masks = torch.zeros([1], dtype=torch.bool)
+
+        subtypes = torch.zeros([1], dtype=torch.long)
 
     if rels:
         rels = torch.tensor(rels, dtype=torch.long)
@@ -126,6 +138,7 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
 
     return dict(encodings=encodings, context_masks=context_masks, entity_masks=entity_masks,
                 entity_sizes=entity_sizes, entity_types=entity_types,
+                subtypes=subtypes,
                 rels=rels, rel_masks=rel_masks, rel_types=rel_types,
                 entity_sample_masks=entity_sample_masks, rel_sample_masks=rel_sample_masks)
 

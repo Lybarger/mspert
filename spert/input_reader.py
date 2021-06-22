@@ -18,6 +18,10 @@ class BaseInputReader(ABC):
 
         self._entity_types = OrderedDict()
         self._idx2entity_type = OrderedDict()
+
+        self._subtypes = OrderedDict()
+        self._idx2subtype = OrderedDict()
+
         self._relation_types = OrderedDict()
         self._idx2relation_type = OrderedDict()
 
@@ -32,6 +36,19 @@ class BaseInputReader(ABC):
             entity_type = EntityType(key, i + 1, v['short'], v['verbose'])
             self._entity_types[key] = entity_type
             self._idx2entity_type[i + 1] = entity_type
+
+        # subtypes
+        # add 'None' subtype
+        none_subtype = EntityType('None', 0, 'None', 'No Subtype')
+        self._subtypes['None'] = none_subtype
+        self._idx2subtype[0] = none_subtype
+
+        # specified entity types
+        for i, (key, v) in enumerate(types['subtypes'].items()):
+            subtype = EntityType(key, i + 1, v['short'], v['verbose'])
+            self._subtypes[key] = subtype
+            self._idx2subtype[i + 1] = subtype
+
 
         # relations
         # add 'None' relation type
@@ -67,6 +84,10 @@ class BaseInputReader(ABC):
         entity = self._idx2entity_type[idx]
         return entity
 
+    def get_subtype(self, idx) -> EntityType:
+        subtype = self._idx2subtype[idx]
+        return subtype
+
     def get_relation_type(self, idx) -> RelationType:
         relation = self._idx2relation_type[idx]
         return relation
@@ -84,6 +105,10 @@ class BaseInputReader(ABC):
         return self._entity_types
 
     @property
+    def subtypes(self):
+        return self._subtypes
+
+    @property
     def relation_types(self):
         return self._relation_types
 
@@ -94,6 +119,10 @@ class BaseInputReader(ABC):
     @property
     def entity_type_count(self):
         return len(self._entity_types)
+
+    @property
+    def subtype_count(self):
+        return len(self._subtypes)
 
     @property
     def vocabulary_size(self):
@@ -117,11 +146,18 @@ class JsonInputReader(BaseInputReader):
         super().__init__(types_path, tokenizer, neg_entity_count, neg_rel_count, max_span_size, logger)
 
     def read(self, dataset_path, dataset_label):
-        dataset = Dataset(dataset_label, self._relation_types, self._entity_types, self._neg_entity_count,
-                          self._neg_rel_count, self._max_span_size)
+        dataset = Dataset( \
+                        label = dataset_label,
+                        rel_types = self._relation_types,
+                        entity_types = self._entity_types,
+                        subtypes = self._subtypes,
+                        neg_entity_count = self._neg_entity_count,
+                        neg_rel_count = self._neg_rel_count,
+                        max_span_size = self._max_span_size)
         self._parse_dataset(dataset_path, dataset)
         self._datasets[dataset_label] = dataset
         return dataset
+
 
     def _parse_dataset(self, dataset_path, dataset):
         documents = json.load(open(dataset_path))
@@ -132,35 +168,51 @@ class JsonInputReader(BaseInputReader):
         jtokens = doc['tokens']
         jrelations = doc['relations']
         jentities = doc['entities']
+        jsubtypes = doc['subtypes']
 
         # parse tokens
         doc_tokens, doc_encoding = _parse_tokens(jtokens, dataset, self._tokenizer)
 
         # parse entity mentions
-        entities = self._parse_entities(jentities, doc_tokens, dataset)
+        entities, subtypes = self._parse_entities(jentities, jsubtypes, doc_tokens, dataset)
 
         # parse relations
         relations = self._parse_relations(jrelations, entities, dataset)
 
         # create document
-        document = dataset.create_document(doc_tokens, entities, relations, doc_encoding)
-
+        document = dataset.create_document( \
+                                    tokens = doc_tokens,
+                                    entity_mentions = entities,
+                                    subtype_mentions = subtypes,
+                                    relations = relations,
+                                    doc_encoding = doc_encoding)
         return document
 
-    def _parse_entities(self, jentities, doc_tokens, dataset) -> List[Entity]:
+    def _parse_entities(self, jentities, jsubtypes, doc_tokens, dataset) -> (List[Entity], List[Entity]):
+
+        assert len(jentities) == len(jsubtypes)
+
         entities = []
+        subtypes = []
 
         for entity_idx, jentity in enumerate(jentities):
             entity_type = self._entity_types[jentity['type']]
             start, end = jentity['start'], jentity['end']
 
+
+            jsubtype = jsubtypes[entity_idx]
+            subtype = self._subtypes[jsubtype['type']]
+
             # create entity mention
             tokens = doc_tokens[start:end]
             phrase = " ".join([t.phrase for t in tokens])
-            entity = dataset.create_entity(entity_type, tokens, phrase)
+            entity, subtype = dataset.create_entity(entity_type, subtype, tokens, phrase)
             entities.append(entity)
+            subtypes.append(subtype)
 
-        return entities
+        return (entities, subtypes)
+
+
 
     def _parse_relations(self, jrelations, entities, dataset) -> List[Relation]:
         relations = []
@@ -196,7 +248,7 @@ class JsonPredictionInputReader(BaseInputReader):
         self._nlp = spacy.load(spacy_model) if spacy is not None and spacy_model is not None else None
 
     def read(self, dataset_path, dataset_label):
-        dataset = Dataset(dataset_label, self._relation_types, self._entity_types, self._neg_entity_count,
+        dataset = Dataset(dataset_label, self._relation_types, self._entity_types, self._subtypes, self._neg_entity_count,
                           self._neg_rel_count, self._max_span_size)
         self._parse_dataset(dataset_path, dataset)
         self._datasets[dataset_label] = dataset

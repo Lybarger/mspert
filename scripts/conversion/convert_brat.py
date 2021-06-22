@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import logging
+import re
 
 TEXT_FILE_EXT = 'txt'
 ANN_FILE_EXT = 'ann'
@@ -20,9 +21,8 @@ EVENT_RE = re.compile(r'^E\d+\t')
 ATTRIBUTE_RE = re.compile(r'^A\d+\t')
 RELATION_RE = re.compile(r'^R\d+\t')
 
-TEXTBOUND_LB_SEP = ';'
-
 RELATION_DEFAULT = 'relation'
+CHAR_COUNT = 12
 
 def get_filename(path):
     root, ext = os.path.splitext(path)
@@ -421,210 +421,6 @@ def parse_relations(lines):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-def join_list(join_tokens, lis):
-    joint_list = []
-
-    for i, item in enumerate(lis):
-        if item:
-            joint_list.append(item)
-
-        if i != len(lis) - 1:
-            joint_list.extend(join_tokens)
-
-    return joint_list
-
-
-def prep_tokens(tokens):
-    # corner case handling
-    prepped_tokens = []
-
-    for token, idx in tokens:
-        prep_token = token
-
-        if ')-' in token:
-            prep_token = join_list([')', '-'], token.split(')-'))
-        elif token in MAPPING:
-            prep_token = MAPPING[token]
-
-        if type(prep_token) == list:
-            new_indices = []
-            offset = 0
-            for sp in prep_token:
-                new_indices.append(idx + offset)
-                offset += len(sp)
-            assert (len(prep_token) == len(new_indices))
-            prepped_tokens.extend(list(zip(prep_token, new_indices)))
-        else:
-            prepped_tokens.append((prep_token, idx))
-
-    return prepped_tokens
-
-
-def distance(c1, c2):
-    return c2[0] - c1[1]
-
-
-def find_entity(tokens, indices, entity_text, nlp):
-    entity_tokens = nlp(entity_text)
-    entity_tokens = [(t.text, t.idx) for t in entity_tokens]
-    entity_tokens = [t[0] for t in prep_tokens(entity_tokens)]
-
-    for i in range(len(tokens) - (len(entity_tokens) - 1)):
-        if tokens[i:i + len(entity_tokens)] == entity_tokens:
-            yield i, i + len(entity_tokens), indices[i], indices[i + len(entity_tokens) - 1] + len(
-                tokens[i + len(entity_tokens) - 1])
-
-
-def find_pair(tokens, indices, ae_text, drug_text, dist, trial, nlp):
-    curr_trial = 0
-
-    for head_start, head_end, h_sidx, h_eidx in find_entity(tokens, indices, ae_text, nlp):
-        for tail_start, tail_end, t_sidx, t_eidx in find_entity(tokens, indices, drug_text, nlp):
-            entity_dist = distance((h_sidx, h_eidx), (t_sidx, t_eidx))
-
-            if dist == entity_dist:
-                if curr_trial == trial:
-                    return head_start, head_end, tail_start, tail_end
-                curr_trial += 1
-
-    assert False
-
-
-def parse_sentence(sentence, nlp):
-    add_dot = False
-    if sentence[-1] == '.':
-        sentence = sentence[:-1]
-        add_dot = True
-
-    tokens = nlp(sentence)
-    tokens = [(t.text, t.idx) for t in tokens]
-    tokens = prep_tokens(tokens)
-
-    parsed_tokens = []
-    parsed_indices = []  # token start indices
-
-    for token, idx in tokens:
-        if token.strip():
-            parsed_tokens.append(token)
-            parsed_indices.append(idx)
-
-    if add_dot:
-        parsed_indices.append(parsed_indices[-1] + len(parsed_tokens[-1]))
-        parsed_tokens.append('.')
-
-    return parsed_tokens, parsed_indices
-
-
-def assign_labels(tokens, indices, ae_char_span, drug_char_span,
-                  ae_text, drug_text, doc_entities, doc_relations, nlp):
-    dist = distance(ae_char_span, drug_char_span)
-
-    try_find, trial = True, 0
-    while try_find:
-        head_start, head_end, tail_start, tail_end = find_pair(tokens, indices, ae_text, drug_text, dist, trial, nlp)
-
-        head = dict(type='Adverse-Effect', start=head_start, end=head_end)
-        tail = dict(type='Drug', start=tail_start, end=tail_end)
-
-        if head in doc_entities:
-            head_idx = doc_entities.index(head)
-        else:
-            head_idx = len(doc_entities)
-            doc_entities.append(head)
-
-        if tail in doc_entities:
-            tail_idx = doc_entities.index(tail)
-        else:
-            tail_idx = len(doc_entities)
-            doc_entities.append(tail)
-
-        relation = dict(type='Adverse-Effect', head=head_idx, tail=tail_idx)
-
-        if relation not in doc_relations:
-            doc_relations.append(relation)
-            try_find = False
-
-        trial += 1
-
-
-def strip_entities(e_text, e_char_span):
-    start, end = e_char_span
-
-    if e_text != e_text.lstrip():
-        start += len(e_text) - len(e_text.lstrip())
-
-    if e_text != e_text.rstrip():
-        end -= len(e_text) - len(e_text.rstrip())
-
-    return e_text.strip(), (start, end)
-
-
-def assign_id(assigned_ids, id_count, orig_doc_id, sentence):
-    key = orig_doc_id + '_' + sentence.strip()
-
-    if key not in assigned_ids:
-        if orig_doc_id not in id_count:
-            id_count[orig_doc_id] = 0
-
-        assigned_ids[key] = orig_doc_id + '_' + str(id_count[orig_doc_id])
-        id_count[orig_doc_id] += 1
-
-    return assigned_ids[key]
-
-
-def read_docs(lines, nlp):
-    documents = OrderedDict()
-    entities, relations = dict(), dict()
-    assigned_ids, id_count = dict(), dict()
-
-    for line in tqdm(lines):
-        parts = line.split('|')
-
-        sentence = parts[1]
-        doc_id = assign_id(assigned_ids, id_count, parts[0], sentence)
-
-        ae_text, drug_text = parts[2], parts[5]
-        ae_char_span, drug_char_span = ((int(parts[3].strip()), int(parts[4].strip())),
-                                       (int(parts[6].strip()), int(parts[7].strip())))
-
-        ae_text, ae_char_span = strip_entities(ae_text, ae_char_span)
-        drug_text, drug_char_span = strip_entities(drug_text, drug_char_span)
-
-        if doc_id not in documents:
-            documents[doc_id] = parse_sentence(sentence, nlp)
-            entities[doc_id] = []
-            relations[doc_id] = []
-
-        tokens, indices = documents[doc_id]
-        doc_entities = entities[doc_id]
-        doc_relations = relations[doc_id]
-
-        assign_labels(tokens, indices, ae_char_span, drug_char_span,
-                      ae_text, drug_text, doc_entities, doc_relations, nlp)
-
-    final_docs = []
-    for k in documents.keys():
-        doc_tokens = documents[k][0]
-        doc_entities = entities[k]
-        doc_relations = relations[k]
-        final_docs.append(dict(tokens=doc_tokens, entities=doc_entities,
-                               relations=doc_relations, orig_id=k))
-
-    return final_docs
-
-
-
 def rm_ws(spacy_tokens):
     return [token for token in spacy_tokens if token.text.strip()]
 
@@ -707,7 +503,7 @@ def get_tb_indices(tb_dict, offsets):
                     if start_match(tb.start, token_start, token_end):
                         token_start_index = j
                     if end_match(tb.end, token_start, token_end):
-                        token_end_index = j
+                        token_end_index = j + 1
                 break
 
         assert sent_index is not None
@@ -720,23 +516,16 @@ def get_tb_indices(tb_dict, offsets):
 
     return map
 
-def convert_doc(text, ann, id, tokenizer, relation_default=RELATION_DEFAULT):
+def convert_doc(text, ann, id, tokenizer, \
+                    allowable_tb = None,
+                    relation_default = RELATION_DEFAULT):
 
 
     tokens, offsets = tokenize_document(text, tokenizer)
 
 
-
-    #print(tokens)
-    #print(offsets)
-
-
-
-
     # Extract events, text bounds, and attributes from annotation string
     event_dict, relation_dict, tb_dict, attr_dict = get_annotations(ann)
-
-
 
     indices = get_tb_indices(tb_dict, offsets)
 
@@ -750,6 +539,11 @@ def convert_doc(text, ann, id, tokenizer, relation_default=RELATION_DEFAULT):
     for event_id, event in event_dict.items():
         #print()
         #print(event_id, event)
+
+        head_tb_id = None
+        head_sent = None
+        head_index = None
+
         for i, (tb_type, tb_id) in enumerate(event.arguments.items()):
             #print()
 
@@ -772,28 +566,33 @@ def convert_doc(text, ann, id, tokenizer, relation_default=RELATION_DEFAULT):
 
 
             #print(attr)
+            if (allowable_tb is None) or (tb.type_ in allowable_tb):
 
-            if tb_id not in entities[sent_index]:
-                d = {"type": tb.type_, "start": tb.start, "end": tb.end}
-                entities[sent_index][tb_id] = d
+                if tb_id not in entities[sent_index]:
+                    d = {"type": tb.type_, "start": token_start, "end": token_end}
+                    entities[sent_index][tb_id] = d
 
-                d = {"type": attr_value, "start": tb.start, "end": tb.end}
-                subtypes[sent_index][tb_id] = d
+                    d = {"type": attr_value, "start": token_start, "end": token_end}
+                    subtypes[sent_index][tb_id] = d
 
-            entity_index = list(entities[sent_index].keys()).index(tb_id)
+                entity_index = list(entities[sent_index].keys()).index(tb_id)
 
 
-            if i == 0:
-                head_tb_id = tb_id
-                head_sent = sent_index
-                head_index = entity_index
-            elif head_sent == sent_index:
+                if i == 0:
+                    head_tb_id = tb_id
+                    head_sent = sent_index
+                    head_index = entity_index
+                elif head_sent == sent_index:
 
-                d = {"type": relation_default, "head": head_index, "tail": entity_index}
-                relations[sent_index].append(d)
+                    assert head_tb_id is not None
+                    assert head_sent is not None
+                    assert head_index is not None
 
-            else:
-                logging.warn(f"Head index not an same sentence as tail. Skipping relation.")
+                    d = {"type": relation_default, "head": head_index, "tail": entity_index}
+                    relations[sent_index].append(d)
+
+                else:
+                    logging.warn(f"Head index not an same sentence as tail. Skipping relation.")
 
 
     #print(entities)
@@ -811,7 +610,7 @@ def convert_doc(text, ann, id, tokenizer, relation_default=RELATION_DEFAULT):
     for i in range(sent_count):
         d = {}
         d["id"] = f'{id}[{i}]'
-        d["text"] = tokens[i]
+        d["tokens"] = tokens[i]
         d["entities"] = entities[i]
         d["subtypes"] = subtypes[i]
         d["relations"] = relations[i]
@@ -819,20 +618,119 @@ def convert_doc(text, ann, id, tokenizer, relation_default=RELATION_DEFAULT):
 
     return out
 
-def convert(source_path, dest_path, spacy_model):
+def format_str(x, n=CHAR_COUNT):
+
+    y = x[0:n].ljust(n)
+    return y
+
+
+
+def format_doc(doc):
+
+    out = []
+    for sent in doc:
+        out.append('')
+        out.append(sent["id"])
+
+        tokens = sent["tokens"]
+        n = len(tokens)
+        tokens = ' '.join([format_str(y) for y in ['TOKENS:'] + tokens])
+        out.append(tokens)
+
+        entities = ['']*n
+        for entity in sent["entities"]:
+            start = entity["start"]
+            end = entity["end"]
+            type = entity['type']
+            for i in range(start, end):
+                if i == start:
+                    entities[i] = type
+                elif i == end -1:
+                    entities[i] = '-'*(CHAR_COUNT-1) + '>'
+                else:
+                    entities[i] = '-'*CHAR_COUNT
+        entities = ' '.join([format_str(y) for y in ['ENTITIES:'] + entities])
+        out.append(entities)
+
+        relations = ['']*n
+        for relation in sent["relations"]:
+
+            type = relation["type"]
+            head = relation["head"]
+            tail = relation["tail"]
+
+
+
+            if tail > head:
+
+                start = sent["entities"][head]['start']
+                end = sent["entities"][tail]['end']
+
+                for i in range(start, end):
+                    if i == start:
+                        relations[i] = entity['type']
+                    elif i == end -1:
+                        relations[i] = '-'*(CHAR_COUNT-1) + '>'
+                    else:
+                        relations[i] = '-'*CHAR_COUNT
+            else:
+
+                start = sent["entities"][head]['end'] - 1
+                end = sent["entities"][tail]['start']
+
+                for i in range(start, end-1, -1):
+                    if i == start:
+                        relations[i] = entity['type']
+                    elif i == end:
+                        relations[i] = '<' + '-'*(CHAR_COUNT-1)
+                    else:
+                        relations[i] = '-'*CHAR_COUNT
+
+        relations = ' '.join([format_str(y) for y in ['RELATIONS:'] + relations])
+        out.append(relations)
+
+    out = '\n'.join(out)
+
+    return out
+
+def get_allowable_types(path):
+
+    if path is None:
+        return None
+    else:
+        types = json.load(open(path, 'r'))
+        #d = {}
+        #d['entities'] = list(types['entities'].keys())
+        #d['relations'] = list(types['relations'].keys())
+
+        allowable_tb = list(types['entities'].keys())
+        return allowable_tb
+
+
+def convert(source_path, dest_path, spacy_model, types_path=None, sample_count=None):
 
     tokenizer = spacy.load(spacy_model)
+
+
+    allowable_tb = get_allowable_types(types_path)
 
 
     text_files, ann_files = get_brat_files(source_path)
     file_list = list(zip(text_files, ann_files))
     file_list.sort(key=lambda x: x[1])
 
+    if (sample_count is not None) and (sample_count != -1):
+        file_list = file_list[0:sample_count]
+        logging.warn(f"-"*80)
+        logging.warn(f"Truncating loaded files to first {sample_count} files")
+        logging.warn(f"-"*80)
+
 
     pbar = tqdm(total=len(file_list))
 
     # Loop on annotated files
     converted_docs = []
+    formatted_docs = []
     for fn_txt, fn_ann in file_list:
 
         # Read text file
@@ -846,15 +744,23 @@ def convert(source_path, dest_path, spacy_model):
         # Use filename as ID
         id = os.path.splitext(os.path.relpath(fn_txt, source_path))[0]
 
-        doc = convert_doc(text, ann, id, tokenizer)
+        doc = convert_doc(text, ann, id, tokenizer, allowable_tb=allowable_tb)
+
 
         converted_docs.extend(doc)
-
+        formatted_docs.append(format_doc(doc))
 
         pbar.update(1)
     pbar.close()
 
     json.dump(converted_docs, open(dest_path, 'w'))
+
+    formatted_doc_path = Path(dest_path).with_suffix('.txt')
+    with open(formatted_doc_path, 'w') as f:
+        formatted_docs = '\n'.join(formatted_docs)
+        f.write(formatted_docs)
+
+
 
     return converted_docs
 
@@ -864,10 +770,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('--source_path', type=str, help="Path to dataset")
     arg_parser.add_argument('--dest_path', type=str, help="Destination file path (JSON format)")
     arg_parser.add_argument('--spacy_model', type=str, default='en_core_web_sm', help="SpaCy model")
-    arg_parser.add_argument('--entities', type=str, default=None, help="entity types to include")
+    arg_parser.add_argument('--types_path', type=str, default=None, help="Types file path (JSON format)")
+    arg_parser.add_argument('--sample_count', type=int, default=-1, help="Number of files to load")
 
     args = arg_parser.parse_args()
-    convert(args.source_path, args.dest_path, args.spacy_model)
-
-
-#python3 ./convert_brat.py --source_path /home/lybarger/incidentalomas/analyses/step010_brat_import/radiology/radiology_anatomy/ --dest_path /home/lybarger/spert_plus/sandbox/data.json
+    convert(args.source_path, args.dest_path, args.spacy_model, args.types_path, args.sample_count)
