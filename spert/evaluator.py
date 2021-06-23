@@ -97,13 +97,14 @@ class Evaluator:
         return ner_eval, ner_eval_st, rel_eval, rel_nec_eval
 
     def store_predictions(self):
-        prediction.store_predictions( \
+        predictions = prediction.store_predictions( \
                         documents = self._dataset.documents,
                         pred_entities = self._pred_entities,
                         pred_subtypes = self._pred_subtypes,
                         pred_relations = self._pred_relations,
                         store_path = self._predictions_path)
 
+        return predictions
 
     def store_examples(self):
         if jinja2 is None:

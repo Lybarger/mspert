@@ -94,7 +94,7 @@ class SpERTTrainer(BaseTrainer):
 
             # eval validation sets
             if not args.final_eval or (epoch == args.epochs - 1):
-                self._eval(model, validation_dataset, input_reader, epoch + 1, updates_epoch)
+                predictions_path = self._eval(model, validation_dataset, input_reader, epoch + 1, updates_epoch)
 
         # save final model
         extra = dict(epoch=args.epochs, updates_epoch=updates_epoch, epoch_iteration=0)
@@ -106,6 +106,8 @@ class SpERTTrainer(BaseTrainer):
         self._logger.info("Logged in: %s" % self._log_path)
         self._logger.info("Saved in: %s" % self._save_path)
         self._close_summary_writer()
+
+        return (predictions_path)
 
     def eval(self, dataset_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
         args = self._args
@@ -216,6 +218,9 @@ class SpERTTrainer(BaseTrainer):
 
         return iteration
 
+    def predictions_path(self):
+        return os.path.join(self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
+
     def _eval(self, model: torch.nn.Module, dataset: Dataset, input_reader: BaseInputReader,
               epoch: int = 0, updates_epoch: int = 0, iteration: int = 0):
         self._logger.info("Evaluate: %s" % dataset.label)
@@ -269,6 +274,8 @@ class SpERTTrainer(BaseTrainer):
 
         if self._args.store_examples:
             evaluator.store_examples()
+
+        return predictions_path
 
     def _predict(self, model: torch.nn.Module, dataset: Dataset, input_reader: BaseInputReader):
         # create data loader
