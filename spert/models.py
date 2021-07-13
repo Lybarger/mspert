@@ -4,6 +4,10 @@ from transformers import BertConfig
 from transformers import BertModel
 from transformers import BertPreTrainedModel
 
+from allennlp.modules import FeedForward
+from allennlp.nn import Activation
+
+
 from spert import sampling
 from spert import util
 
@@ -27,18 +31,84 @@ class SpERT(BertPreTrainedModel):
     VERSION = '1.1'
 
     def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int,
-                 size_embedding: int, prop_drop: float, freeze_transformer: bool, max_pairs: int = 100):
+                 size_embedding: int, prop_drop: float, freeze_transformer: bool, max_pairs: int = 100,
+                 classifier_type: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0):
         super(SpERT, self).__init__(config)
 
 
         # BERT model
         self.bert = BertModel(config)
 
-        # layers
-        self.rel_classifier = nn.Linear(config.hidden_size * 3 + size_embedding * 2, relation_types)
-        self.entity_classifier = nn.Linear(config.hidden_size * 2 + size_embedding, entity_types)
 
-        self.subtype_classifier = nn.Linear(config.hidden_size * 2 + size_embedding + entity_types, subtypes)
+        relation_input_dim = config.hidden_size * 3 + size_embedding * 2
+        entity_input_dim = config.hidden_size * 2 + size_embedding
+        subtype_input_dim = entity_input_dim + entity_types
+
+        linear_activation = Activation.by_name('linear')()
+        tanh_activation = Activation.by_name('tanh')()
+
+
+        # layers
+        if classifier_type == "linear":
+
+            num_layers = 1
+
+            relation_hidden_dims = relation_types
+            entity_hidden_dims = entity_types
+            subtype_hidden_dims = subtypes
+
+            activations = linear_activation
+
+            dropout = 0.0
+
+        elif classifier_type == "ffnn":
+
+            num_layers = 2
+
+            relation_hidden_dims =  [projection_size,       relation_types]
+            entity_hidden_dims =    [projection_size,       entity_types]
+            subtype_hidden_dims =   [projection_size,       subtypes]
+
+            activations =           [tanh_activation,       linear_activation]
+
+            dropout =               [projection_dropout,   0.0]
+
+        else:
+            raise ValueError(f"Invalid classifier type: {classifier_type}")
+
+
+        self.rel_classifier = FeedForward( \
+                                input_dim = relation_input_dim,
+                                num_layers = num_layers,
+                                hidden_dims = relation_hidden_dims,
+                                activations = activations,
+                                dropout = dropout)
+        print("relation_classifier:", self.rel_classifier)
+
+        self.entity_classifier = FeedForward( \
+                                input_dim = entity_input_dim,
+                                num_layers = num_layers,
+                                hidden_dims = entity_hidden_dims,
+                                activations = activations,
+                                dropout = dropout)
+
+        print("entity_classifier:", self.entity_classifier)
+
+        self.subtype_classifier = FeedForward( \
+                                input_dim = subtype_input_dim,
+                                num_layers = num_layers,
+                                hidden_dims = subtype_hidden_dims,
+                                activations = activations,
+                                dropout = dropout)
+        print("subtype_classifier:", self.subtype_classifier)
+
+
+
+        #self.rel_classifier = nn.Linear(config.hidden_size * 3 + size_embedding * 2, relation_types)
+        #self.entity_classifier = nn.Linear(config.hidden_size * 2 + size_embedding, entity_types)
+
+        #self.subtype_classifier = nn.Linear(config.hidden_size * 2 + size_embedding, subtypes)
+
 
 
         self.size_embeddings = nn.Embedding(100, size_embedding)
@@ -74,8 +144,10 @@ class SpERT(BertPreTrainedModel):
 
         # classify relations
         h_large = h.unsqueeze(1).repeat(1, max(min(relations.shape[1], self._max_pairs), 1), 1, 1)
+
         rel_clf = torch.zeros([batch_size, relations.shape[1], self._relation_types]).to(
-            self.rel_classifier.weight.device)
+            h.device)
+            # self.rel_classifier.weight.device)
 
         # obtain relation logits
         # chunk processing to reduce memory usage
@@ -107,7 +179,8 @@ class SpERT(BertPreTrainedModel):
         rel_sample_masks = rel_sample_masks.float().unsqueeze(-1)
         h_large = h.unsqueeze(1).repeat(1, max(min(relations.shape[1], self._max_pairs), 1), 1, 1)
         rel_clf = torch.zeros([batch_size, relations.shape[1], self._relation_types]).to(
-            self.rel_classifier.weight.device)
+            h.device)
+            # self.rel_classifier.weight.device)
 
         # obtain relation logits
         # chunk processing to reduce memory usage
@@ -154,8 +227,10 @@ class SpERT(BertPreTrainedModel):
         # classify entity candidates
         entity_clf = self.entity_classifier(entity_repr)
 
+
         entity_repr_aug = torch.cat([entity_repr, entity_clf], dim=2)
         subtype_clf = self.subtype_classifier(entity_repr_aug)
+
 
         return entity_clf, subtype_clf, entity_spans_pool
 
@@ -231,7 +306,9 @@ class SpERT(BertPreTrainedModel):
                 batch_rel_sample_masks.append(torch.tensor(sample_masks, dtype=torch.bool))
 
         # stack
-        device = self.rel_classifier.weight.device
+        #device = self.rel_classifier.weight.device
+        device = entity_clf.device
+
         batch_relations = util.padded_stack(batch_relations).to(device)
         batch_rel_masks = util.padded_stack(batch_rel_masks).to(device)
         batch_rel_sample_masks = util.padded_stack(batch_rel_sample_masks).to(device)

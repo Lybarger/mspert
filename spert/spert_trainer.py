@@ -167,6 +167,9 @@ class SpERTTrainer(BaseTrainer):
                                             prop_drop = self._args.prop_drop,
                                             size_embedding = self._args.size_embedding,
                                             freeze_transformer = self._args.freeze_transformer,
+                                            classifier_type = self._args.classifier_type,
+                                            projection_size = self._args.projection_size,
+                                            projection_dropout = self._args.projection_dropout,                  
                                             cache_dir = self._args.cache_path)
 
 

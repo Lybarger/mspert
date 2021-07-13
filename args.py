@@ -31,14 +31,21 @@ def _add_common_args(arg_parser):
                             help="If true, do not evaluate on overlapping entities "
                                  "and relations with overlapping entities")
 
+
+    arg_parser.add_argument('--classifier_type', type=str, default='linear', help="Span classifier type")
+    arg_parser.add_argument('--projection_size', type=int, default=100, help="Span classifier projection size")
+    arg_parser.add_argument('--projection_dropout', type=float, default=0.0, help="Span classifier projection dropout")
+    # KL
+    arg_parser.add_argument('--device', type=int, default=None, help="GPU device")
+
+
     # Misc
     arg_parser.add_argument('--seed', type=int, default=None, help="Seed")
     arg_parser.add_argument('--cache_path', type=str, default=None,
                             help="Path to cache transformer models (for HuggingFace transformers library)")
     arg_parser.add_argument('--debug', action='store_true', default=False, help="Debugging mode on/off")
 
-    # KL
-    arg_parser.add_argument('--device', type=int, default=None, help="GPU device")
+
 
 def _add_logging_args(arg_parser):
     arg_parser.add_argument('--label', type=str, help="Label of run. Used as the directory name of logs/models")
