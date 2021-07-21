@@ -6,10 +6,17 @@ from transformers import BertPreTrainedModel
 
 from allennlp.modules import FeedForward
 from allennlp.nn import Activation
-
+import torch.nn.functional as F
 
 from spert import sampling
 from spert import util
+
+NO_CONCAT = "no_concat"
+CONCAT_LOGITS = "concat_logits"
+CONCAT_PROBS = "concat_probs"
+LABEL_BIAS = "label_bias"
+
+
 
 
 def get_token(h: torch.tensor, x: torch.tensor, token: int):
@@ -32,76 +39,65 @@ class SpERT(BertPreTrainedModel):
 
     def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int,
                  size_embedding: int, prop_drop: float, freeze_transformer: bool, max_pairs: int = 100,
-                 classifier_type: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0):
+                 subtype_classification: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0):
         super(SpERT, self).__init__(config)
 
 
         # BERT model
         self.bert = BertModel(config)
 
-
-        relation_input_dim = config.hidden_size * 3 + size_embedding * 2
-        entity_input_dim = config.hidden_size * 2 + size_embedding
-        subtype_input_dim = entity_input_dim + entity_types
-
         linear_activation = Activation.by_name('linear')()
         tanh_activation = Activation.by_name('tanh')()
 
+        relation_input_dim = config.hidden_size * 3 + size_embedding * 2
+        entity_input_dim = config.hidden_size * 2 + size_embedding
 
-        # layers
-        if classifier_type == "linear":
 
-            num_layers = 1
+        self.subtype_classification = subtype_classification
 
-            relation_hidden_dims = relation_types
-            entity_hidden_dims = entity_types
-            subtype_hidden_dims = subtypes
-
-            activations = linear_activation
-
-            dropout = 0.0
-
-        elif classifier_type == "ffnn":
-
-            num_layers = 2
-
-            relation_hidden_dims =  [projection_size,       relation_types]
-            entity_hidden_dims =    [projection_size,       entity_types]
-            subtype_hidden_dims =   [projection_size,       subtypes]
-
-            activations =           [tanh_activation,       linear_activation]
-
-            dropout =               [projection_dropout,   0.0]
-
+        if self.subtype_classification in [NO_CONCAT, LABEL_BIAS]:
+            subtype_input_dim = entity_input_dim
+        elif self.subtype_classification in [CONCAT_LOGITS, CONCAT_PROBS]:
+            subtype_input_dim = entity_input_dim + entity_types
         else:
-            raise ValueError(f"Invalid classifier type: {classifier_type}")
+            raise ValueError(f"Invalid subtype classification: {self.subtype_classification}")
+
+
+
+
 
 
         self.rel_classifier = FeedForward( \
                                 input_dim = relation_input_dim,
-                                num_layers = num_layers,
-                                hidden_dims = relation_hidden_dims,
-                                activations = activations,
-                                dropout = dropout)
+                                num_layers = 1,
+                                hidden_dims = relation_types,
+                                activations = linear_activation,
+                                dropout = 0.0)
         print("relation_classifier:", self.rel_classifier)
 
         self.entity_classifier = FeedForward( \
                                 input_dim = entity_input_dim,
-                                num_layers = num_layers,
-                                hidden_dims = entity_hidden_dims,
-                                activations = activations,
-                                dropout = dropout)
-
+                                num_layers = 1,
+                                hidden_dims = entity_types,
+                                activations = linear_activation,
+                                dropout = 0.0)
         print("entity_classifier:", self.entity_classifier)
 
         self.subtype_classifier = FeedForward( \
                                 input_dim = subtype_input_dim,
-                                num_layers = num_layers,
-                                hidden_dims = subtype_hidden_dims,
-                                activations = activations,
-                                dropout = dropout)
+                                num_layers = 1,
+                                hidden_dims = subtypes,
+                                activations = linear_activation,
+                                dropout = 0.0)
         print("subtype_classifier:", self.subtype_classifier)
 
+        self.subtype_bias = FeedForward( \
+                                input_dim = entity_types,
+                                num_layers = 1,
+                                hidden_dims = subtypes,
+                                activations = linear_activation,
+                                dropout = 0.0)
+        print("subtype_bias:", self.subtype_bias)
 
 
         #self.rel_classifier = nn.Linear(config.hidden_size * 3 + size_embedding * 2, relation_types)
@@ -228,9 +224,25 @@ class SpERT(BertPreTrainedModel):
         entity_clf = self.entity_classifier(entity_repr)
 
 
-        entity_repr_aug = torch.cat([entity_repr, entity_clf], dim=2)
-        subtype_clf = self.subtype_classifier(entity_repr_aug)
 
+
+        if self.subtype_classification == NO_CONCAT:
+            subtype_repr = entity_repr
+        elif self.subtype_classification == CONCAT_LOGITS:
+            subtype_repr = torch.cat([entity_repr, entity_clf], dim=2)
+        elif self.subtype_classification == CONCAT_PROBS:
+            entity_prob = F.softmax(entity_clf, dim=-1)
+            subtype_repr = torch.cat([entity_repr, entity_prob], dim=2)
+        elif self.subtype_classification == LABEL_BIAS:
+            subtype_repr = entity_repr
+        else:
+            raise ValueError(f"Invalid subtype classification: {self.subtype_classification}")
+
+        subtype_clf = self.subtype_classifier(subtype_repr)
+
+        if self.subtype_classification == LABEL_BIAS:
+            subtype_bias = self.subtype_bias(entity_clf)
+            subtype_clf += subtype_bias
 
         return entity_clf, subtype_clf, entity_spans_pool
 

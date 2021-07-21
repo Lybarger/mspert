@@ -31,8 +31,7 @@ def _add_common_args(arg_parser):
                             help="If true, do not evaluate on overlapping entities "
                                  "and relations with overlapping entities")
 
-
-    arg_parser.add_argument('--classifier_type', type=str, default='linear', help="Span classifier type")
+    arg_parser.add_argument('--subtype_classification', type=str, default='concat_logits', help="Span classifier type")
     arg_parser.add_argument('--projection_size', type=int, default=100, help="Span classifier projection size")
     arg_parser.add_argument('--projection_dropout', type=float, default=0.0, help="Span classifier projection dropout")
     # KL

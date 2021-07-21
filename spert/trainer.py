@@ -27,12 +27,16 @@ class BaseTrainer:
         run_key = str(datetime.datetime.now()).replace(' ', '_')
 
         if hasattr(args, 'save_path'):
-            self._save_path = os.path.join(self._args.save_path, self._args.label, run_key)
+            #self._save_path = os.path.join(self._args.save_path, self._args.label, run_key)
+            self._save_path = self._args.save_path
+
             util.create_directories_dir(self._save_path)
 
         # logging
         if hasattr(args, 'log_path'):
-            self._log_path = os.path.join(self._args.log_path, self._args.label, run_key)
+            #self._log_path = os.path.join(self._args.log_path, self._args.label, run_key)
+            self._log_path = self._args.log_path
+
             util.create_directories_dir(self._log_path)
 
             self._log_paths = dict()
@@ -121,10 +125,12 @@ class BaseTrainer:
             extra_state.update(extra)
 
         if save_as_best:
-            dir_path = os.path.join(save_path, '%s_best' % name)
+            #dir_path = os.path.join(save_path, '%s_best' % name)
+            dir_path = save_path
         else:
-            dir_name = '%s_%s' % (name, iteration) if include_iteration else name
-            dir_path = os.path.join(save_path, dir_name)
+            #dir_name = '%s_%s' % (name, iteration) if include_iteration else name
+            #dir_path = os.path.join(save_path, dir_name)
+            dir_path = save_path
 
         util.create_directories_dir(dir_path)
 

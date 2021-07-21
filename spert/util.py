@@ -9,7 +9,8 @@ import torch
 
 from spert.entities import TokenSpan
 
-CSV_DELIMETER = ';'
+# CSV_DELIMETER = ';'
+CSV_DELIMETER = ','
 
 
 def create_directories_file(f):

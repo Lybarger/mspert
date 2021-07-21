@@ -167,9 +167,9 @@ class SpERTTrainer(BaseTrainer):
                                             prop_drop = self._args.prop_drop,
                                             size_embedding = self._args.size_embedding,
                                             freeze_transformer = self._args.freeze_transformer,
-                                            classifier_type = self._args.classifier_type,
+                                            subtype_classification = self._args.subtype_classification,
                                             projection_size = self._args.projection_size,
-                                            projection_dropout = self._args.projection_dropout,                  
+                                            projection_dropout = self._args.projection_dropout,
                                             cache_dir = self._args.cache_path)
 
 
@@ -222,7 +222,8 @@ class SpERTTrainer(BaseTrainer):
         return iteration
 
     def predictions_path(self):
-        return os.path.join(self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
+        #return os.path.join(self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
+        return os.path.join(self._log_path, f'predictions.json')
 
     def _eval(self, model: torch.nn.Module, dataset: Dataset, input_reader: BaseInputReader,
               epoch: int = 0, updates_epoch: int = 0, iteration: int = 0):
@@ -233,7 +234,9 @@ class SpERTTrainer(BaseTrainer):
             model = model.module
 
         # create evaluator
-        predictions_path = os.path.join(self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
+        #predictions_path = os.path.join(self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
+        predictions_path = os.path.join(self._log_path, f'predictions.json')
+
         examples_path = os.path.join(self._log_path, f'examples_%s_{dataset.label}_epoch_{epoch}.html')
         evaluator = Evaluator(dataset, input_reader, self._tokenizer,
                               self._args.rel_filter_threshold, self._args.no_overlapping, predictions_path,
