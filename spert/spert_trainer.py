@@ -81,7 +81,16 @@ class SpERTTrainer(BaseTrainer):
         # create loss function
         rel_criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
         entity_criterion = torch.nn.CrossEntropyLoss(reduction='none')
-        compute_loss = SpERTLoss(rel_criterion, entity_criterion, model, optimizer, scheduler, args.max_grad_norm)
+        compute_loss = SpERTLoss( \
+                            rel_criterion = rel_criterion, 
+                            entity_criterion = entity_criterion,
+                            model = model,
+                            optimizer = optimizer,
+                            scheduler = scheduler,
+                            max_grad_norm = args.max_grad_norm,
+                            subtype_classification = args.subtype_classification
+                            )
+
 
         # eval validation set
         if args.init_eval:

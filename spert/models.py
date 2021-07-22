@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from spert import sampling
 from spert import util
 
+NO_SUBTYPE = "no_subtype"
 NO_CONCAT = "no_concat"
 CONCAT_LOGITS = "concat_logits"
 CONCAT_PROBS = "concat_probs"
@@ -55,7 +56,7 @@ class SpERT(BertPreTrainedModel):
 
         self.subtype_classification = subtype_classification
 
-        if self.subtype_classification in [NO_CONCAT, LABEL_BIAS]:
+        if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
             subtype_input_dim = entity_input_dim
         elif self.subtype_classification in [CONCAT_LOGITS, CONCAT_PROBS]:
             subtype_input_dim = entity_input_dim + entity_types
@@ -226,15 +227,13 @@ class SpERT(BertPreTrainedModel):
 
 
 
-        if self.subtype_classification == NO_CONCAT:
+        if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
             subtype_repr = entity_repr
         elif self.subtype_classification == CONCAT_LOGITS:
             subtype_repr = torch.cat([entity_repr, entity_clf], dim=2)
         elif self.subtype_classification == CONCAT_PROBS:
             entity_prob = F.softmax(entity_clf, dim=-1)
             subtype_repr = torch.cat([entity_repr, entity_prob], dim=2)
-        elif self.subtype_classification == LABEL_BIAS:
-            subtype_repr = entity_repr
         else:
             raise ValueError(f"Invalid subtype classification: {self.subtype_classification}")
 
