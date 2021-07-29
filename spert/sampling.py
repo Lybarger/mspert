@@ -136,11 +136,17 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
         rel_masks = torch.zeros([1, context_size], dtype=torch.bool)
         rel_sample_masks = torch.zeros([1], dtype=torch.bool)
 
+
+    #sent_labels = torch.LongTensor(doc.sent_labels)
+    sent_labels = torch.tensor(doc.sent_labels, dtype=torch.float32)
+
+
     return dict(encodings=encodings, context_masks=context_masks, entity_masks=entity_masks,
                 entity_sizes=entity_sizes, entity_types=entity_types,
                 subtypes=subtypes,
                 rels=rels, rel_masks=rel_masks, rel_types=rel_types,
-                entity_sample_masks=entity_sample_masks, rel_sample_masks=rel_sample_masks)
+                entity_sample_masks=entity_sample_masks, rel_sample_masks=rel_sample_masks,
+                sent_labels=sent_labels)
 
 
 def create_eval_sample(doc, max_span_size: int):

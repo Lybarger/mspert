@@ -31,10 +31,11 @@ def _add_common_args(arg_parser):
                             help="If true, do not evaluate on overlapping entities "
                                  "and relations with overlapping entities")
 
+    # KL
     arg_parser.add_argument('--subtype_classification', type=str, default='concat_logits', help="Span classifier type")
     arg_parser.add_argument('--projection_size', type=int, default=100, help="Span classifier projection size")
     arg_parser.add_argument('--projection_dropout', type=float, default=0.0, help="Span classifier projection dropout")
-    # KL
+    arg_parser.add_argument('--include_sent_task', action='store_true', default=False, help="Include sentence-level task")
     arg_parser.add_argument('--device', type=int, default=None, help="GPU device")
 
 
@@ -43,6 +44,7 @@ def _add_common_args(arg_parser):
     arg_parser.add_argument('--cache_path', type=str, default=None,
                             help="Path to cache transformer models (for HuggingFace transformers library)")
     arg_parser.add_argument('--debug', action='store_true', default=False, help="Debugging mode on/off")
+
 
 
 

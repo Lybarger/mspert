@@ -41,22 +41,31 @@ class Evaluator:
         self._gt_subtypes = []  # ground truth
         self._pred_subtypes = []  # prediction
 
+        self._gt_sent_labels = []  # ground truth
+        self._pred_sent_labels = []  # prediction
+
+
         self._pseudo_entity_type = EntityType('Entity', 1, 'Entity', 'Entity')  # for span only evaluation
 
         self._convert_gt(self._dataset.documents)
 
     def eval_batch(self, batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
-                   batch_rels: torch.tensor, batch: dict):
-        batch_pred_entities, batch_pred_subtypes, batch_pred_relations = prediction.convert_predictions( \
-                                batch_entity_clf, batch_subtype_clf, batch_rel_clf,
-                                batch_rels, batch,
-                                self._rel_filter_threshold,
-                                self._input_reader,
-                                no_overlapping=self._no_overlapping)
+                   batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch: dict):
+        batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels = prediction.convert_predictions( \
+                                batch_entity_clf = batch_entity_clf,
+                                batch_subtype_clf = batch_subtype_clf,
+                                batch_rel_clf = batch_rel_clf,
+                                batch_rels = batch_rels,
+                                batch_sent_clf = batch_sent_clf,
+                                batch = batch,
+                                rel_filter_threshold = self._rel_filter_threshold,
+                                input_reader = self._input_reader,
+                                no_overlapping = self._no_overlapping)
 
         self._pred_entities.extend(batch_pred_entities)
         self._pred_subtypes.extend(batch_pred_subtypes)
         self._pred_relations.extend(batch_pred_relations)
+        self._pred_sent_labels.extend(batch_pred_sent_labels)
 
     def compute_scores(self):
         print("Evaluation")
@@ -102,6 +111,7 @@ class Evaluator:
                         pred_entities = self._pred_entities,
                         pred_subtypes = self._pred_subtypes,
                         pred_relations = self._pred_relations,
+                        pred_sent_labels = self._pred_sent_labels,
                         store_path = self._predictions_path)
 
         return predictions
@@ -183,6 +193,7 @@ class Evaluator:
             self._gt_entities.append(sample_gt_entities)
             self._gt_subtypes.append(sample_gt_subtypes)
             self._gt_relations.append(sample_gt_relations)
+            self._gt_sent_labels.append(doc.sent_labels)
 
     def _convert_by_setting(self, gt: List[List[Tuple]], pred: List[List[Tuple]],
                             include_entity_types: bool = True, include_score: bool = False):

@@ -261,14 +261,22 @@ class Relation:
 
 
 class Document:
-    def __init__(self, doc_id: int, tokens: List[Token], entities: List[Entity], subtypes: List[Entity], relations: List[Relation],
-                 encoding: List[int]):
+    def __init__(self,  \
+                doc_id: int,
+                tokens: List[Token],
+                entities: List[Entity],
+                subtypes: List[Entity],
+                relations: List[Relation],
+                sent_labels: List[int],
+                encoding: List[int]):
+
         self._doc_id = doc_id  # ID within the corresponding dataset
 
         self._tokens = tokens
         self._entities = entities
         self._subtypes = subtypes
         self._relations = relations
+        self._sent_labels = sent_labels
 
         # byte-pair document encoding including special tokens ([CLS] and [SEP])
         self._encoding = encoding
@@ -288,6 +296,11 @@ class Document:
     @property
     def relations(self):
         return self._relations
+
+    @property
+    def sent_labels(self):
+        return self._sent_labels
+
 
     @property
     def tokens(self):
@@ -341,12 +354,14 @@ class Dataset(TorchDataset):
     TRAIN_MODE = 'train'
     EVAL_MODE = 'eval'
 
-    def __init__(self, label, rel_types, entity_types, subtypes, neg_entity_count,
+    def __init__(self, label, rel_types, entity_types, subtypes, sent_types, neg_entity_count,
                  neg_rel_count, max_span_size):
         self._label = label
         self._rel_types = rel_types
         self._entity_types = entity_types
         self._subtypes = subtypes
+        self._sent_types = sent_types
+
         self._neg_entity_count = neg_entity_count
         self._neg_rel_count = neg_rel_count
         self._max_span_size = max_span_size
@@ -356,6 +371,7 @@ class Dataset(TorchDataset):
         self._entities = OrderedDict()
         self._subtypes = OrderedDict()
         self._relations = OrderedDict()
+        #self._sent_labels = OrderedDict()
 
         # current ids
         self._doc_id = 0
@@ -374,8 +390,18 @@ class Dataset(TorchDataset):
         self._tid += 1
         return token
 
-    def create_document(self, tokens, entity_mentions, subtype_mentions, relations, doc_encoding) -> Document:
-        document = Document(self._doc_id, tokens, entity_mentions, subtype_mentions, relations, doc_encoding)
+    def create_document(self, tokens, entity_mentions, subtype_mentions, relations, sent_labels, doc_encoding) -> Document:
+        document = Document( \
+                        doc_id = self._doc_id,
+                        tokens = tokens,
+                        entities = entity_mentions,
+                        subtypes = subtype_mentions,
+                        relations = relations,
+                        sent_labels = sent_labels,
+                        encoding = doc_encoding)
+
+
+
         self._documents[self._doc_id] = document
         self._doc_id += 1
 

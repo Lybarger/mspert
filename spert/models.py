@@ -38,8 +38,8 @@ class SpERT(BertPreTrainedModel):
 
     VERSION = '1.1'
 
-    def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int,
-                 size_embedding: int, prop_drop: float, freeze_transformer: bool, max_pairs: int = 100,
+    def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int, sent_label_types:int,
+                 size_embedding: int, prop_drop: float, freeze_transformer: bool,  max_pairs: int = 100,
                  subtype_classification: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0):
         super(SpERT, self).__init__(config)
 
@@ -101,6 +101,15 @@ class SpERT(BertPreTrainedModel):
         print("subtype_bias:", self.subtype_bias)
 
 
+        self.sent_classifier = FeedForward( \
+                                input_dim = config.hidden_size,
+                                num_layers = 1,
+                                hidden_dims = sent_label_types,
+                                activations = linear_activation,
+                                dropout = 0.0)
+        print("sent_classifier:", self.sent_classifier)
+
+
         #self.rel_classifier = nn.Linear(config.hidden_size * 3 + size_embedding * 2, relation_types)
         #self.entity_classifier = nn.Linear(config.hidden_size * 2 + size_embedding, entity_types)
 
@@ -154,7 +163,10 @@ class SpERT(BertPreTrainedModel):
                                                         relations, rel_masks, h_large, i)
             rel_clf[:, i:i + self._max_pairs, :] = chunk_rel_logits
 
-        return entity_clf, subtype_clf, rel_clf
+
+        sent_clf = self._classify_sentences(encodings, h)
+
+        return entity_clf, subtype_clf, rel_clf, sent_clf
 
     def _forward_inference(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor,
                            entity_sizes: torch.tensor, entity_spans: torch.tensor, entity_sample_masks: torch.tensor):
@@ -194,7 +206,9 @@ class SpERT(BertPreTrainedModel):
         # apply softmax
         entity_clf = torch.softmax(entity_clf, dim=2)
 
-        return entity_clf, subtype_clf, rel_clf, relations
+        sent_clf = self._classify_sentences(encodings, h)
+
+        return entity_clf, subtype_clf, rel_clf, relations, sent_clf
 
     def _classify_entities(self, encodings, h, entity_masks, size_embeddings):
         # max pool entity candidate spans
@@ -279,6 +293,17 @@ class SpERT(BertPreTrainedModel):
         # classify relation candidates
         chunk_rel_logits = self.rel_classifier(rel_repr)
         return chunk_rel_logits
+
+    def _classify_sentences(self, encodings, h):
+
+        # get cls token as candidate context representation
+        ctx = get_token(h, encodings, self._cls_token)
+
+        # classify entity candidates
+        clf = self.sent_classifier(ctx)
+
+        return clf
+
 
     def _filter_spans(self, entity_clf, entity_spans, entity_sample_masks, ctx_size):
         batch_size = entity_clf.shape[0]

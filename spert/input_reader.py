@@ -25,6 +25,10 @@ class BaseInputReader(ABC):
         self._relation_types = OrderedDict()
         self._idx2relation_type = OrderedDict()
 
+        self._sent_types = OrderedDict()
+        self._idx2sent_label = OrderedDict()
+
+
         # entities
         # add 'None' entity type
         none_entity_type = EntityType('None', 0, 'None', 'No Entity')
@@ -62,6 +66,12 @@ class BaseInputReader(ABC):
             self._relation_types[key] = relation_type
             self._idx2relation_type[i + 1] = relation_type
 
+
+        for i, key in enumerate(types["sent_labels"]):
+            self._sent_types[key] = i
+            self._idx2sent_label[i] = key
+
+
         self._neg_entity_count = neg_entity_count
         self._neg_rel_count = neg_rel_count
         self._max_span_size = max_span_size
@@ -91,6 +101,14 @@ class BaseInputReader(ABC):
     def get_relation_type(self, idx) -> RelationType:
         relation = self._idx2relation_type[idx]
         return relation
+
+    def get_sent_label(self, idxs) -> dict:
+
+        assert len(self._sent_types.keys()) == len(idxs)
+
+        y = OrderedDict([(k, int(v)) for k, v in zip(self._sent_types.keys(), idxs)])
+        return y
+
 
     def _log(self, text):
         if self._logger is not None:
@@ -125,6 +143,10 @@ class BaseInputReader(ABC):
         return len(self._subtypes)
 
     @property
+    def sent_type_count(self):
+        return len(self._sent_types)
+
+    @property
     def vocabulary_size(self):
         return self._vocabulary_size
 
@@ -151,6 +173,7 @@ class JsonInputReader(BaseInputReader):
                         rel_types = self._relation_types,
                         entity_types = self._entity_types,
                         subtypes = self._subtypes,
+                        sent_types = self._sent_types,
                         neg_entity_count = self._neg_entity_count,
                         neg_rel_count = self._neg_rel_count,
                         max_span_size = self._max_span_size)
@@ -169,6 +192,7 @@ class JsonInputReader(BaseInputReader):
         jrelations = doc['relations']
         jentities = doc['entities']
         jsubtypes = doc['subtypes']
+        jsent_labels = doc["sent_labels"]
 
         # parse tokens
         doc_tokens, doc_encoding = _parse_tokens(jtokens, dataset, self._tokenizer)
@@ -179,14 +203,22 @@ class JsonInputReader(BaseInputReader):
         # parse relations
         relations = self._parse_relations(jrelations, entities, dataset)
 
+        sent_labels = self._parse_sent_labels(jsent_labels)
+
         # create document
         document = dataset.create_document( \
                                     tokens = doc_tokens,
                                     entity_mentions = entities,
                                     subtype_mentions = subtypes,
                                     relations = relations,
+                                    sent_labels = sent_labels,
                                     doc_encoding = doc_encoding)
         return document
+
+    def _parse_sent_labels(self, jsent_labels):
+        y =  [jsent_labels[k] for k in self._sent_types]
+
+        return y
 
     def _parse_entities(self, jentities, jsubtypes, doc_tokens, dataset) -> (List[Entity], List[Entity]):
 

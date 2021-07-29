@@ -8,7 +8,7 @@ from spert.input_reader import BaseInputReader
 
 
 def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
-                        batch_rels: torch.tensor, batch: dict, rel_filter_threshold: float,
+                        batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch: dict, rel_filter_threshold: float,
                         input_reader: BaseInputReader, no_overlapping: bool = False):
     # get maximum activation (index of predicted entity type)
     batch_entity_types = batch_entity_clf.argmax(dim=-1)
@@ -24,9 +24,13 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch
     # apply threshold to relations
     batch_rel_clf[batch_rel_clf < rel_filter_threshold] = 0
 
+    batch_sent_labels = torch.round(torch.sigmoid(batch_sent_clf))
+
+
     batch_pred_entities = []
     batch_pred_subtypes = []
     batch_pred_relations = []
+    batch_pred_sent_labels = []
 
     for i in range(batch_rel_clf.shape[0]):
         # get model predictions for sample
@@ -40,6 +44,8 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch
 
         rel_clf = batch_rel_clf[i]
         rels = batch_rels[i]
+
+        sent_labels = batch_sent_labels[i]
 
         # convert predicted entities
         sample_pred_entities = _convert_pred_entities(entity_types, entity_spans,
@@ -61,13 +67,15 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch
             sample_pred_entities, sample_pred_relations = remove_overlapping(sample_pred_entities,
                                                                              sample_pred_relations)
 
+        sample_pred_sent_labels = _convert_pred_sent_labels(sent_labels, input_reader)
 
 
         batch_pred_entities.append(sample_pred_entities)
         batch_pred_subtypes.append(sample_pred_subtypes)
         batch_pred_relations.append(sample_pred_relations)
+        batch_pred_sent_labels.append((sample_pred_sent_labels))
 
-    return batch_pred_entities, batch_pred_subtypes, batch_pred_relations
+    return batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels
 
 
 def _convert_pred_entities(entity_types: torch.tensor, entity_spans: torch.tensor,
@@ -146,6 +154,13 @@ def _convert_pred_relations(rel_clf: torch.tensor, rels: torch.tensor,
 
     return converted_rels
 
+def _convert_pred_sent_labels(sent_labels: torch.tensor, input_reader: BaseInputReader):
+
+    sent_labels = sent_labels.tolist()
+    sent_labels = input_reader.get_sent_label(sent_labels)
+    return sent_labels
+
+
 
 def remove_overlapping(entities, relations):
     non_overlapping_entities = []
@@ -188,7 +203,7 @@ def _adjust_rel(rel: Tuple):
     return adjusted_rel
 
 
-def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, store_path):
+def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, pred_sent_labels, store_path):
     predictions = []
 
     for i, doc in enumerate(documents):
@@ -196,6 +211,7 @@ def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, s
         sample_pred_entities = pred_entities[i]
         sample_pred_subtypes = pred_subtypes[i]
         sample_pred_relations = pred_relations[i]
+        sample_pred_sent_labels = pred_sent_labels[i]
 
         # convert entities
         converted_entities = []
@@ -238,11 +254,14 @@ def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, s
             converted_relations.append(converted_relation)
         converted_relations = sorted(converted_relations, key=lambda r: r['head'])
 
+        converted_sent_labels = sample_pred_sent_labels
+
         doc_predictions = dict( \
                                 tokens = [t.phrase for t in tokens],
                                 entities = converted_entities,
                                 subtypes = converted_subtypes,
-                                relations = converted_relations)
+                                relations = converted_relations,
+                                sent_labels = converted_sent_labels)
         predictions.append(doc_predictions)
 
     # store as json

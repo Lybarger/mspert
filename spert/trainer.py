@@ -91,6 +91,7 @@ class BaseTrainer:
             self._log_paths[label] = dic
             self._best_results[label] = 0
 
+
     def _log_arguments(self):
         util.save_dict(self._log_path, self._args, 'args')
         if self._summary_writer is not None:
