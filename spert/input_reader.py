@@ -66,8 +66,11 @@ class BaseInputReader(ABC):
             self._relation_types[key] = relation_type
             self._idx2relation_type[i + 1] = relation_type
 
-
-        for i, key in enumerate(types["sent_labels"]):
+        if "sent_labels" not in types:
+            sent_label_types = ['none']
+        else:
+            sent_label_types = types["sent_labels"]
+        for i, key in enumerate(sent_label_types):
             self._sent_types[key] = i
             self._idx2sent_label[i] = key
 
@@ -192,7 +195,11 @@ class JsonInputReader(BaseInputReader):
         jrelations = doc['relations']
         jentities = doc['entities']
         jsubtypes = doc['subtypes']
-        jsent_labels = doc["sent_labels"]
+
+        if "sent_labels" in doc:
+            jsent_labels = doc["sent_labels"]
+        else:
+            jsent_labels = None
 
         # parse tokens
         doc_tokens, doc_encoding = _parse_tokens(jtokens, dataset, self._tokenizer)
@@ -216,7 +223,10 @@ class JsonInputReader(BaseInputReader):
         return document
 
     def _parse_sent_labels(self, jsent_labels):
-        y =  [jsent_labels[k] for k in self._sent_types]
+        if jsent_labels is None:
+            y =  [0]*len(self._sent_types)
+        else:
+            y =  [jsent_labels[k] for k in self._sent_types]
 
         return y
 
