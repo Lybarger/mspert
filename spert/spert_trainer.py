@@ -92,7 +92,7 @@ class SpERTTrainer(BaseTrainer):
                             scheduler = scheduler,
                             max_grad_norm = args.max_grad_norm,
                             subtype_classification = args.subtype_classification,
-                            include_sent_task = args.include_sent_task
+                            include_sent_task = args.include_sent_task,
                             )
 
 
@@ -182,7 +182,7 @@ class SpERTTrainer(BaseTrainer):
                                             size_embedding = self._args.size_embedding,
                                             freeze_transformer = self._args.freeze_transformer,
                                             subtype_classification = self._args.subtype_classification,
-
+                                            concat_sent_pred = self._args.concat_sent_pred,
                                             projection_size = self._args.projection_size,
                                             projection_dropout = self._args.projection_dropout,
                                             cache_dir = self._args.cache_path)
@@ -290,7 +290,7 @@ class SpERTTrainer(BaseTrainer):
                                     batch_subtype_clf = subtype_clf,
                                     batch_rel_clf = rel_clf,
                                     batch_rels = rels,
-                                    batch_sent_clf = sent_clf, 
+                                    batch_sent_clf = sent_clf,
                                     batch = batch)
 
 
