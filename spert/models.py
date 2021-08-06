@@ -56,24 +56,21 @@ class SpERT(BertPreTrainedModel):
 
         relation_input_dim = config.hidden_size * 3 + size_embedding * 2
 
+
+
+
         entity_input_dim = config.hidden_size * 2 + size_embedding
         if self.concat_sent_pred:
             entity_input_dim += sent_label_types
 
 
-
-
-
+        subtype_input_dim = entity_input_dim
         if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
-            subtype_input_dim = entity_input_dim
+            pass
         elif self.subtype_classification in [CONCAT_LOGITS, CONCAT_PROBS]:
-            subtype_input_dim = entity_input_dim + entity_types
+            subtype_input_dim += entity_types
         else:
             raise ValueError(f"Invalid subtype classification: {self.subtype_classification}")
-
-
-
-
 
 
         self.rel_classifier = FeedForward( \
@@ -279,6 +276,8 @@ class SpERT(BertPreTrainedModel):
         # get cls token as candidate context representation
         #entity_ctx = get_token(h, encodings, self._cls_token)
 
+
+
         # create candidate representations including context, max pooled span and size embedding
         entity_ctx = entity_ctx.unsqueeze(1).repeat(1, entity_spans_pool.shape[1], 1)
         entity_repr = torch.cat([entity_ctx, entity_spans_pool, size_embeddings], dim=2)
@@ -288,23 +287,23 @@ class SpERT(BertPreTrainedModel):
         entity_clf = self.entity_classifier(entity_repr)
 
 
-
-
+        subtype_repr = entity_repr
         if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
-            subtype_repr = entity_repr
+            pass
         elif self.subtype_classification == CONCAT_LOGITS:
-            subtype_repr = torch.cat([entity_repr, entity_clf], dim=2)
+            subtype_repr = torch.cat([subtype_repr, entity_clf], dim=2)
         elif self.subtype_classification == CONCAT_PROBS:
-            entity_prob = F.softmax(entity_clf, dim=-1)
-            subtype_repr = torch.cat([entity_repr, entity_prob], dim=2)
+            subtype_repr = F.softmax(entity_clf, dim=-1)
+            subtype_repr = torch.cat([subtype_repr, entity_prob], dim=2)
         else:
             raise ValueError(f"Invalid subtype classification: {self.subtype_classification}")
 
         subtype_clf = self.subtype_classifier(subtype_repr)
 
         if self.subtype_classification == LABEL_BIAS:
-            subtype_bias = self.subtype_bias(entity_clf)
-            subtype_clf += subtype_bias
+            subtype_clf += self.subtype_bias(entity_clf)
+
+
 
         return entity_clf, subtype_clf, entity_spans_pool
 
