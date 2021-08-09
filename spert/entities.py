@@ -159,8 +159,14 @@ class Entity:
 
         self._entity_type = entity_type
 
+        # actual tokens, NOT word piece tokens
         self._tokens = tokens
+
+        # entity span as string
         self._phrase = phrase
+
+        # span_start = word_piece start
+        # span_end = word_piece end
 
     def as_tuple(self):
         return self.span_start, self.span_end, self._entity_type
@@ -173,10 +179,12 @@ class Entity:
     def tokens(self):
         return TokenSpan(self._tokens)
 
+    # word piece start
     @property
     def span_start(self):
         return self._tokens[0].span_start
 
+    # word_piece end
     @property
     def span_end(self):
         return self._tokens[-1].span_end
@@ -268,6 +276,7 @@ class Document:
                 subtypes: List[Entity],
                 relations: List[Relation],
                 sent_labels: List[int],
+                word_piece_labels: List[int],
                 encoding: List[int]):
 
         self._doc_id = doc_id  # ID within the corresponding dataset
@@ -277,6 +286,7 @@ class Document:
         self._subtypes = subtypes
         self._relations = relations
         self._sent_labels = sent_labels
+        self._word_piece_labels = word_piece_labels
 
         # byte-pair document encoding including special tokens ([CLS] and [SEP])
         self._encoding = encoding
@@ -300,6 +310,11 @@ class Document:
     @property
     def sent_labels(self):
         return self._sent_labels
+
+    @property
+    def word_piece_labels(self):
+        return self._word_piece_labels
+
 
 
     @property
@@ -390,7 +405,7 @@ class Dataset(TorchDataset):
         self._tid += 1
         return token
 
-    def create_document(self, tokens, entity_mentions, subtype_mentions, relations, sent_labels, doc_encoding) -> Document:
+    def create_document(self, tokens, entity_mentions, subtype_mentions, relations, sent_labels, word_piece_labels, doc_encoding) -> Document:
         document = Document( \
                         doc_id = self._doc_id,
                         tokens = tokens,
@@ -398,6 +413,7 @@ class Dataset(TorchDataset):
                         subtypes = subtype_mentions,
                         relations = relations,
                         sent_labels = sent_labels,
+                        word_piece_labels = word_piece_labels,
                         encoding = doc_encoding)
 
 
@@ -428,8 +444,14 @@ class Dataset(TorchDataset):
         doc = self._documents[index]
 
         if self._mode == Dataset.TRAIN_MODE:
-            return sampling.create_train_sample(doc, self._neg_entity_count, self._neg_rel_count,
-                                                self._max_span_size, len(self._rel_types))
+
+            return sampling.create_train_sample( \
+                        doc = doc,
+                        neg_entity_count = self._neg_entity_count,
+                        neg_rel_count = self._neg_rel_count,
+                        max_span_size = self._max_span_size,
+                        rel_type_count = len(self._rel_types))
+
         else:
             return sampling.create_eval_sample(doc, self._max_span_size)
 

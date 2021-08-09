@@ -12,19 +12,28 @@ class Loss(ABC):
 
 
 class SpERTLoss(Loss):
-    def __init__(self, rel_criterion, entity_criterion, sent_criterion, model, optimizer, scheduler, max_grad_norm, subtype_classification, include_sent_task):
+    def __init__(self, rel_criterion, entity_criterion, sent_criterion, token_criterion, model, optimizer, scheduler, max_grad_norm, subtype_classification, include_sent_task, include_token_task):
         self._rel_criterion = rel_criterion
         self._entity_criterion = entity_criterion
         self._sent_criterion = sent_criterion
+        self._token_criterion = token_criterion
         self._model = model
         self._optimizer = optimizer
         self._scheduler = scheduler
         self._max_grad_norm = max_grad_norm
         self._subtype_classification = subtype_classification
         self._include_sent_task = include_sent_task
+        self._include_token_task = include_token_task
 
 
-    def compute(self, entity_logits, subtype_logits, rel_logits, sent_logits, entity_types, subtypes, rel_types, entity_sample_masks, rel_sample_masks, sent_labels):
+    def compute(self, entity_logits, rel_logits, entity_types, rel_types, entity_sample_masks, rel_sample_masks, \
+            subtype_logits = None,
+            subtype_labels = None,
+            sent_logits = None,
+            sent_labels = None,
+            token_logits = None,
+            token_labels = None
+            ):
 
 
         # entity loss
@@ -32,7 +41,7 @@ class SpERTLoss(Loss):
         subtype_logits = subtype_logits.view(-1, subtype_logits.shape[-1])
 
         entity_types = entity_types.view(-1)
-        subtypes = subtypes.view(-1)
+        subtype_labels = subtype_labels.view(-1)
 
         entity_sample_masks = entity_sample_masks.view(-1).float()
 
@@ -60,7 +69,7 @@ class SpERTLoss(Loss):
 
         if self._subtype_classification != NO_SUBTYPE:
 
-            subtype_loss = self._entity_criterion(subtype_logits, subtypes)
+            subtype_loss = self._entity_criterion(subtype_logits, subtype_labels)
             subtype_loss = (subtype_loss * entity_sample_masks).sum() / entity_sample_masks.sum()
 
             # corner case: no positive/negative relation samples
@@ -68,9 +77,11 @@ class SpERTLoss(Loss):
 
         if self._include_sent_task:
             sent_loss = self._sent_criterion(sent_logits, sent_labels).mean()
-
             train_loss += sent_loss
 
+        if self._include_token_task:
+            token_loss = self._token_criterion(token_logits, token_labels).mean()
+            train_loss += token_loss
 
         train_loss.backward()
         torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._max_grad_norm)

@@ -41,12 +41,14 @@ class SpERT(BertPreTrainedModel):
     def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int, sent_label_types:int,
                  size_embedding: int, prop_drop: float, freeze_transformer: bool,  max_pairs: int = 100,
                  subtype_classification: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0,
-                 concat_sent_pred: bool=False):
+                 concat_sent_pred: bool=False, include_adjacent: bool=False, include_token_task: bool=False):
         super(SpERT, self).__init__(config)
 
 
         self.subtype_classification = subtype_classification
         self.concat_sent_pred = concat_sent_pred
+        self.include_adjacent = include_adjacent
+        self.include_token_task = include_token_task
 
         # BERT model
         self.bert = BertModel(config)
@@ -62,6 +64,9 @@ class SpERT(BertPreTrainedModel):
         entity_input_dim = config.hidden_size * 2 + size_embedding
         if self.concat_sent_pred:
             entity_input_dim += sent_label_types
+        if self.include_adjacent:
+            entity_input_dim += config.hidden_size
+
 
 
         subtype_input_dim = entity_input_dim
@@ -114,6 +119,13 @@ class SpERT(BertPreTrainedModel):
                                 dropout = 0.0)
         print("sent_classifier:", self.sent_classifier)
 
+        self.token_classifier = FeedForward( \
+                                input_dim = config.hidden_size,
+                                num_layers = 1,
+                                hidden_dims = entity_types,
+                                activations = linear_activation,
+                                dropout = 0.0)
+
 
         #self.rel_classifier = nn.Linear(config.hidden_size * 3 + size_embedding * 2, relation_types)
         #self.entity_classifier = nn.Linear(config.hidden_size * 2 + size_embedding, entity_types)
@@ -141,7 +153,7 @@ class SpERT(BertPreTrainedModel):
             for param in self.bert.parameters():
                 param.requires_grad = False
 
-    def _forward_train(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor,
+    def _forward_train(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor, entity_masks_adj: torch.tensor,
                        entity_sizes: torch.tensor, relations: torch.tensor, rel_masks: torch.tensor):
         # get contextualized token embeddings from last transformer layer
         context_masks = context_masks.float()
@@ -169,8 +181,15 @@ class SpERT(BertPreTrainedModel):
         entity_clf, subtype_clf, entity_spans_pool = self._classify_entities( \
                                             h = h,
                                             entity_masks = entity_masks,
+                                            entity_masks_adj = entity_masks_adj,
                                             size_embeddings = size_embeddings,
                                             entity_ctx = entity_ctx)
+
+        token_clf = self._classify_tokens(h, include=self.include_token_task)
+
+        print()
+        print('entity', entity_clf.shape)
+        print('token ', token_clf.shape)
 
         # classify relations
         h_large = h.unsqueeze(1).repeat(1, max(min(relations.shape[1], self._max_pairs), 1), 1, 1)
@@ -187,9 +206,11 @@ class SpERT(BertPreTrainedModel):
                                                         relations, rel_masks, h_large, i)
             rel_clf[:, i:i + self._max_pairs, :] = chunk_rel_logits
 
-        return entity_clf, subtype_clf, rel_clf, sent_clf
+        print('relation', rel_clf.shape)
 
-    def _forward_inference(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor,
+        return entity_clf, subtype_clf, rel_clf, sent_clf, token_clf
+
+    def _forward_inference(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor, entity_masks_adj: torch.tensor,
                            entity_sizes: torch.tensor, entity_spans: torch.tensor, entity_sample_masks: torch.tensor):
         # get contextualized token embeddings from last transformer layer
         context_masks = context_masks.float()
@@ -221,9 +242,11 @@ class SpERT(BertPreTrainedModel):
         entity_clf, subtype_clf, entity_spans_pool = self._classify_entities( \
                                             h = h,
                                             entity_masks = entity_masks,
+                                            entity_masks_adj = entity_masks_adj,
                                             size_embeddings = size_embeddings,
                                             entity_ctx = entity_ctx)
 
+        token_clf = self._classify_tokens(h, include=self.include_token_task)
 
 
         # ignore entity candidates that do not constitute an actual entity for relations (based on classifier)
@@ -253,10 +276,10 @@ class SpERT(BertPreTrainedModel):
 
 
 
-        return entity_clf, subtype_clf, rel_clf, relations, sent_clf
+        return entity_clf, subtype_clf, rel_clf, relations, sent_clf, token_clf
 
     #def _classify_entities(self, encodings, h, entity_masks, size_embeddings):
-    def _classify_entities(self, h, entity_masks, size_embeddings, entity_ctx):
+    def _classify_entities(self, h, entity_masks, entity_masks_adj, size_embeddings, entity_ctx):
         # max pool entity candidate spans
         # entity_masks  (batch_size, pos_entities + negative examples, max_length)
         #               (2,          103,                              25)
@@ -267,20 +290,25 @@ class SpERT(BertPreTrainedModel):
 
         # entity_spans_pool  (batch_size, pos_entities + negative examples, max_length, embed_dim)
         #                    (2,          103,                              25, 768)
-        entity_spans_pool = m + h.unsqueeze(1).repeat(1, entity_masks.shape[1], 1, 1)
+        entity_spans_pool =     m + h.unsqueeze(1).repeat(1, entity_masks.shape[1],     1, 1)
+        entity_spans_pool_adj = m + h.unsqueeze(1).repeat(1, entity_masks_adj.shape[1], 1, 1)
 
         # entity_spans_pool  (batch_size, pos_entities + negative examples, embed_dim)
         #                    (2,          103,                              768)
-        entity_spans_pool = entity_spans_pool.max(dim=2)[0]
+        entity_spans_pool =     entity_spans_pool.max(dim=2)[0]
+        entity_spans_pool_adj = entity_spans_pool_adj.max(dim=2)[0]
 
         # get cls token as candidate context representation
         #entity_ctx = get_token(h, encodings, self._cls_token)
 
-
-
         # create candidate representations including context, max pooled span and size embedding
         entity_ctx = entity_ctx.unsqueeze(1).repeat(1, entity_spans_pool.shape[1], 1)
+
         entity_repr = torch.cat([entity_ctx, entity_spans_pool, size_embeddings], dim=2)
+        if self.include_adjacent:
+            entity_repr = torch.cat([entity_repr, entity_spans_pool_adj], dim=2)
+
+
         entity_repr = self.dropout(entity_repr)
 
         # classify entity candidates
@@ -306,6 +334,18 @@ class SpERT(BertPreTrainedModel):
 
 
         return entity_clf, subtype_clf, entity_spans_pool
+
+
+    def _classify_tokens(self, h, include):
+
+        if include:
+            h = self.dropout(h)
+            token_clf = self.token_classifier(h)
+        else:
+            token_clf = torch.tensor([0])
+
+        return token_clf
+        
 
     def _classify_relations(self, entity_spans, size_embeddings, relations, rel_masks, h, chunk_start):
         batch_size = relations.shape[0]

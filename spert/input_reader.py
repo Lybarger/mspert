@@ -5,6 +5,8 @@ from logging import Logger
 from typing import List
 from tqdm import tqdm
 from transformers import BertTokenizer
+import numpy as np
+import logging
 
 from spert import util
 from spert.entities import Dataset, EntityType, RelationType, Entity, Relation, Document
@@ -212,6 +214,8 @@ class JsonInputReader(BaseInputReader):
 
         sent_labels = self._parse_sent_labels(jsent_labels)
 
+        word_piece_labels = self._parse_word_piece_labels(doc_encoding, entities)
+
         # create document
         document = dataset.create_document( \
                                     tokens = doc_tokens,
@@ -219,8 +223,28 @@ class JsonInputReader(BaseInputReader):
                                     subtype_mentions = subtypes,
                                     relations = relations,
                                     sent_labels = sent_labels,
+                                    word_piece_labels = word_piece_labels,
                                     doc_encoding = doc_encoding)
         return document
+
+    def _parse_word_piece_labels(self, doc_encoding, entities):
+
+        entity_type_count = len(self.entity_types)
+        sequence_length = len(doc_encoding)
+
+        word_piece_labels = [0]*sequence_length
+        for entity in entities:
+            start, end = entity.span
+            label_index = entity.entity_type.index
+
+            for i in range(start, end):
+                if word_piece_labels[i] not in [0, label_index]:
+                    logging.warn(f"Overriding word piece label: {word_piece_labels[i]} --> {label_index}")
+                word_piece_labels[i] = label_index
+
+        return word_piece_labels
+
+
 
     def _parse_sent_labels(self, jsent_labels):
         if jsent_labels is None:

@@ -36,7 +36,9 @@ def _add_common_args(arg_parser):
     arg_parser.add_argument('--projection_size', type=int, default=100, help="Span classifier projection size")
     arg_parser.add_argument('--projection_dropout', type=float, default=0.0, help="Span classifier projection dropout")
     arg_parser.add_argument('--include_sent_task', action='store_true', default=False, help="Include sentence-level task")
+    arg_parser.add_argument('--include_token_task', action='store_true', default=False, help="Include token-level task")
     arg_parser.add_argument('--concat_sent_pred', action='store_true', default=False, help="Concatenate sentence-level predictions with CLS")
+    arg_parser.add_argument('--include_adjacent', action='store_true', default=False, help="Include adjacent spans as context for entity extraction")
     arg_parser.add_argument('--device', type=int, default=None, help="GPU device")
 
 
