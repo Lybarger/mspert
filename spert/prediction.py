@@ -7,9 +7,18 @@ from spert import util
 from spert.input_reader import BaseInputReader
 
 
-def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
-                        batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch: dict, rel_filter_threshold: float,
-                        input_reader: BaseInputReader, no_overlapping: bool = False):
+def convert_predictions( \
+        batch_entity_clf: torch.tensor,
+        batch_subtype_clf: torch.tensor,
+        batch_rel_clf: torch.tensor,
+        batch_rels: torch.tensor,
+        batch_sent_clf: torch.tensor,
+        # batch_word_piece_clf: torch.tensor,
+        batch: dict,
+        rel_filter_threshold: float,
+        input_reader: BaseInputReader,
+        no_overlapping: bool = False):
+
     # get maximum activation (index of predicted entity type)
     batch_entity_types = batch_entity_clf.argmax(dim=-1)
     # apply entity sample mask
@@ -26,11 +35,14 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch
 
     batch_sent_labels = torch.round(torch.sigmoid(batch_sent_clf))
 
+    # batch_word_piece_labels = None if (batch_word_piece_clf is None) else \
+    #                                         batch_word_piece_clf.argmax(dim=-1)
 
     batch_pred_entities = []
     batch_pred_subtypes = []
     batch_pred_relations = []
     batch_pred_sent_labels = []
+    batch_pred_word_piece_labels = []
 
     for i in range(batch_rel_clf.shape[0]):
         # get model predictions for sample
@@ -46,6 +58,9 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch
         rels = batch_rels[i]
 
         sent_labels = batch_sent_labels[i]
+
+
+        context_mask = batch["context_masks"][i]
 
         # convert predicted entities
         sample_pred_entities = _convert_pred_entities(entity_types, entity_spans,
@@ -69,12 +84,20 @@ def convert_predictions(batch_entity_clf: torch.tensor, batch_subtype_clf: torch
 
         sample_pred_sent_labels = _convert_pred_sent_labels(sent_labels, input_reader)
 
+        # if batch_word_piece_clf is None:
+        #     word_piece_labels = batch_word_piece_labels[i]
+        #     sample_pred_word_piece_labels = _convert_pred_word_piece_labels(word_piece_labels, input_reader, context_mask)
+        #     batch_pred_word_piece_labels.append(sample_pred_word_piece_labels)
+        # else:
+        #     batch_pred_word_piece_labels = None
 
         batch_pred_entities.append(sample_pred_entities)
         batch_pred_subtypes.append(sample_pred_subtypes)
         batch_pred_relations.append(sample_pred_relations)
-        batch_pred_sent_labels.append((sample_pred_sent_labels))
+        batch_pred_sent_labels.append(sample_pred_sent_labels)
 
+
+    # return batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels, batch_pred_word_piece_labels
     return batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels
 
 
@@ -160,6 +183,14 @@ def _convert_pred_sent_labels(sent_labels: torch.tensor, input_reader: BaseInput
     sent_labels = input_reader.get_sent_label(sent_labels)
     return sent_labels
 
+
+def _convert_pred_word_piece_labels(word_piece_labels: torch.tensor, input_reader: BaseInputReader, context_mask: torch.Tensor):
+
+    sequence_length = context_mask.long().sum()
+    word_piece_labels = word_piece_labels[:sequence_length].tolist()
+    word_piece_labels = [input_reader.get_entity_type(y).identifier for y in word_piece_labels]
+
+    return word_piece_labels
 
 
 def remove_overlapping(entities, relations):

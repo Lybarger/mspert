@@ -114,6 +114,11 @@ class BaseInputReader(ABC):
         y = OrderedDict([(k, int(v)) for k, v in zip(self._sent_types.keys(), idxs)])
         return y
 
+    # def get_word_piece_label(self, idxs) -> List[str]:
+    #
+    #     y = [self._idx2entity_type[i] for i in idxs]
+    #
+    #     return y
 
     def _log(self, text):
         if self._logger is not None:
@@ -232,15 +237,16 @@ class JsonInputReader(BaseInputReader):
         entity_type_count = len(self.entity_types)
         sequence_length = len(doc_encoding)
 
-        word_piece_labels = [0]*sequence_length
+        word_piece_labels = [('None', 0)]*sequence_length
         for entity in entities:
             start, end = entity.span
-            label_index = entity.entity_type.index
+            label = entity.entity_type.identifier
+            index = entity.entity_type.index
 
             for i in range(start, end):
-                if word_piece_labels[i] not in [0, label_index]:
-                    logging.warn(f"Overriding word piece label: {word_piece_labels[i]} --> {label_index}")
-                word_piece_labels[i] = label_index
+                #if word_piece_labels[i] not in [0, label_index]:
+                #    logging.warn(f"Overriding word piece label: {word_piece_labels[i]} --> {label_index}")
+                word_piece_labels[i] = (label, index)
 
         return word_piece_labels
 

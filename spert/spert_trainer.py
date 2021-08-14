@@ -82,20 +82,20 @@ class SpERTTrainer(BaseTrainer):
         rel_criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
         sent_criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
         entity_criterion = torch.nn.CrossEntropyLoss(reduction='none')
-        token_criterion = torch.nn.CrossEntropyLoss(reduction='none')
+        word_piece_criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
         compute_loss = SpERTLoss( \
                             rel_criterion = rel_criterion,
                             entity_criterion = entity_criterion,
                             sent_criterion = sent_criterion,
-                            token_criterion = token_criterion,
+                            word_piece_criterion = word_piece_criterion,
                             model = model,
                             optimizer = optimizer,
                             scheduler = scheduler,
                             max_grad_norm = args.max_grad_norm,
                             subtype_classification = args.subtype_classification,
                             include_sent_task = args.include_sent_task,
-                            include_token_task = args.include_token_task,
+                            include_word_piece_task = args.include_word_piece_task
                             )
 
 
@@ -189,7 +189,8 @@ class SpERTTrainer(BaseTrainer):
                                             projection_size = self._args.projection_size,
                                             projection_dropout = self._args.projection_dropout,
                                             include_adjacent = self._args.include_adjacent,
-                                            include_token_task = self._args.include_token_task,
+                                            include_word_piece_task = self._args.include_word_piece_task,
+                                            concat_word_piece_logits = self._args.concat_word_piece_logits,
                                             cache_dir = self._args.cache_path)
 
 
@@ -213,7 +214,8 @@ class SpERTTrainer(BaseTrainer):
             batch = util.to_device(batch, self._device)
 
             # forward step
-            entity_logits, subtype_logits, rel_logits, sent_logits, token_logits = model( \
+            # entity_logits, subtype_logits, rel_logits, sent_logits, word_piece_logits = model( \
+            entity_logits, subtype_logits, rel_logits, sent_logits = model( \
                                                 encodings = batch['encodings'],
                                                 context_masks = batch['context_masks'],
                                                 entity_masks = batch['entity_masks'],
@@ -234,8 +236,10 @@ class SpERTTrainer(BaseTrainer):
                                             subtype_labels = batch['subtypes'],
                                             sent_logits = sent_logits,
                                             sent_labels = batch["sent_labels"],
-                                            token_logits = token_logits,
-                                            token_labels = batch["token_labels"])
+                                            # word_piece_logits = word_piece_logits,
+                                            # word_piece_labels = batch["word_piece_labels"],
+                                            # word_piece_mask = batch["context_masks"]
+                                            )
 
             # logging
             iteration += 1
@@ -291,7 +295,8 @@ class SpERTTrainer(BaseTrainer):
                                 entity_spans = batch['entity_spans'],
                                 entity_sample_masks = batch['entity_sample_masks'],
                                 inference = True)
-                entity_clf, subtype_clf, rel_clf, rels, sent_clf, token_clf = result
+                #entity_clf, subtype_clf, rel_clf, rels, sent_clf, word_piece_clf = result
+                entity_clf, subtype_clf, rel_clf, rels, sent_clf = result
 
                 # evaluate batch
                 evaluator.eval_batch( \
@@ -300,6 +305,7 @@ class SpERTTrainer(BaseTrainer):
                                     batch_rel_clf = rel_clf,
                                     batch_rels = rels,
                                     batch_sent_clf = sent_clf,
+                                    #batch_word_piece_clf = word_piece_clf,
                                     batch = batch)
 
 
@@ -345,7 +351,7 @@ class SpERTTrainer(BaseTrainer):
                                 entity_spans = batch['entity_spans'],
                                 entity_sample_masks  =batch['entity_sample_masks'],
                                 inference = True)
-                entity_clf, subtype_clf, rel_clf, rels, sent_clf, token_clf = result
+                entity_clf, subtype_clf, rel_clf, rels, sent_clf, word_piece_clf = result
 
                 # convert predictions
                 predictions = prediction.convert_predictions(entity_clf, subtype_clf, rel_clf, rels,

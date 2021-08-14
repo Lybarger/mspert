@@ -8,6 +8,8 @@ from allennlp.modules import FeedForward
 from allennlp.nn import Activation
 import torch.nn.functional as F
 
+import logging
+
 from spert import sampling
 from spert import util
 
@@ -41,14 +43,15 @@ class SpERT(BertPreTrainedModel):
     def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int, sent_label_types:int,
                  size_embedding: int, prop_drop: float, freeze_transformer: bool,  max_pairs: int = 100,
                  subtype_classification: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0,
-                 concat_sent_pred: bool=False, include_adjacent: bool=False, include_token_task: bool=False):
+                 concat_sent_pred: bool=False, include_adjacent: bool=False, include_word_piece_task: bool=False, concat_word_piece_logits: bool=False):
         super(SpERT, self).__init__(config)
 
 
         self.subtype_classification = subtype_classification
         self.concat_sent_pred = concat_sent_pred
         self.include_adjacent = include_adjacent
-        self.include_token_task = include_token_task
+        self.include_word_piece_task = include_word_piece_task
+        self.concat_word_piece_logits = concat_word_piece_logits
 
         # BERT model
         self.bert = BertModel(config)
@@ -66,7 +69,10 @@ class SpERT(BertPreTrainedModel):
             entity_input_dim += sent_label_types
         if self.include_adjacent:
             entity_input_dim += config.hidden_size
-
+        if self.concat_word_piece_logits:
+            logging.warn(f'''Concatenating word piece logits disabled but "concat_word_piece_logits=True"''')
+            #entity_input_dim += entity_types
+            #relation_input_dim += entity_types*2
 
 
         subtype_input_dim = entity_input_dim
@@ -119,7 +125,7 @@ class SpERT(BertPreTrainedModel):
                                 dropout = 0.0)
         print("sent_classifier:", self.sent_classifier)
 
-        self.token_classifier = FeedForward( \
+        self.word_piece_classifier = FeedForward( \
                                 input_dim = config.hidden_size,
                                 num_layers = 1,
                                 hidden_dims = entity_types,
@@ -176,6 +182,15 @@ class SpERT(BertPreTrainedModel):
         else:
             entity_ctx = cls_embedding
 
+
+        # word_piece_clf = None
+        # word_piece_clf = self._classify_word_pieces(h, include=self.include_word_piece_task)
+
+        # if self.concat_word_piece_logits:
+        #     h_entity = torch.cat([h, word_piece_clf], dim=-1)
+        # else:
+        #     h_entity = h
+
         # classify entities
         #entity_clf, subtype_clf, entity_spans_pool = self._classify_entities(encodings, h, entity_masks, size_embeddings)
         entity_clf, subtype_clf, entity_spans_pool = self._classify_entities( \
@@ -185,11 +200,7 @@ class SpERT(BertPreTrainedModel):
                                             size_embeddings = size_embeddings,
                                             entity_ctx = entity_ctx)
 
-        token_clf = self._classify_tokens(h, include=self.include_token_task)
 
-        print()
-        print('entity', entity_clf.shape)
-        print('token ', token_clf.shape)
 
         # classify relations
         h_large = h.unsqueeze(1).repeat(1, max(min(relations.shape[1], self._max_pairs), 1), 1, 1)
@@ -206,9 +217,9 @@ class SpERT(BertPreTrainedModel):
                                                         relations, rel_masks, h_large, i)
             rel_clf[:, i:i + self._max_pairs, :] = chunk_rel_logits
 
-        print('relation', rel_clf.shape)
 
-        return entity_clf, subtype_clf, rel_clf, sent_clf, token_clf
+        # return entity_clf, subtype_clf, rel_clf, sent_clf, word_piece_clf
+        return entity_clf, subtype_clf, rel_clf, sent_clf
 
     def _forward_inference(self, encodings: torch.tensor, context_masks: torch.tensor, entity_masks: torch.tensor, entity_masks_adj: torch.tensor,
                            entity_sizes: torch.tensor, entity_spans: torch.tensor, entity_sample_masks: torch.tensor):
@@ -237,6 +248,16 @@ class SpERT(BertPreTrainedModel):
         else:
             entity_ctx = cls_embedding
 
+
+        # word_piece_clf = None
+        # word_piece_clf = self._classify_word_pieces(h, include=self.include_word_piece_task)
+
+
+        # if self.concat_word_piece_logits:
+        #     h_entity = torch.cat([h, word_piece_clf], dim=-1)
+        # else:
+        #     h_entity = h
+
         # classify entities
         #entity_clf, subtype_clf, entity_spans_pool = self._classify_entities(encodings, h, entity_masks, size_embeddings)
         entity_clf, subtype_clf, entity_spans_pool = self._classify_entities( \
@@ -246,7 +267,6 @@ class SpERT(BertPreTrainedModel):
                                             size_embeddings = size_embeddings,
                                             entity_ctx = entity_ctx)
 
-        token_clf = self._classify_tokens(h, include=self.include_token_task)
 
 
         # ignore entity candidates that do not constitute an actual entity for relations (based on classifier)
@@ -276,7 +296,8 @@ class SpERT(BertPreTrainedModel):
 
 
 
-        return entity_clf, subtype_clf, rel_clf, relations, sent_clf, token_clf
+        # return entity_clf, subtype_clf, rel_clf, relations, sent_clf, word_piece_clf
+        return entity_clf, subtype_clf, rel_clf, relations, sent_clf
 
     #def _classify_entities(self, encodings, h, entity_masks, size_embeddings):
     def _classify_entities(self, h, entity_masks, entity_masks_adj, size_embeddings, entity_ctx):
@@ -336,16 +357,16 @@ class SpERT(BertPreTrainedModel):
         return entity_clf, subtype_clf, entity_spans_pool
 
 
-    def _classify_tokens(self, h, include):
+    def _classify_word_pieces(self, h, include):
 
         if include:
             h = self.dropout(h)
-            token_clf = self.token_classifier(h)
+            word_piece_clf = self.word_piece_classifier(h)
         else:
-            token_clf = torch.tensor([0])
+            word_piece_clf = None
 
-        return token_clf
-        
+        return word_piece_clf
+
 
     def _classify_relations(self, entity_spans, size_embeddings, relations, rel_masks, h, chunk_start):
         batch_size = relations.shape[0]

@@ -313,8 +313,10 @@ class Document:
 
     @property
     def word_piece_labels(self):
-        return self._word_piece_labels
-
+        return [label for label, index in self._word_piece_labels]
+    @property
+    def word_piece_label_idxs(self):
+        return [index for label, index in self._word_piece_labels]
 
 
     @property

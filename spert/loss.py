@@ -12,18 +12,18 @@ class Loss(ABC):
 
 
 class SpERTLoss(Loss):
-    def __init__(self, rel_criterion, entity_criterion, sent_criterion, token_criterion, model, optimizer, scheduler, max_grad_norm, subtype_classification, include_sent_task, include_token_task):
+    def __init__(self, rel_criterion, entity_criterion, sent_criterion, word_piece_criterion, model, optimizer, scheduler, max_grad_norm, subtype_classification, include_sent_task, include_word_piece_task):
         self._rel_criterion = rel_criterion
         self._entity_criterion = entity_criterion
         self._sent_criterion = sent_criterion
-        self._token_criterion = token_criterion
+        self._word_piece_criterion = word_piece_criterion
         self._model = model
         self._optimizer = optimizer
         self._scheduler = scheduler
         self._max_grad_norm = max_grad_norm
         self._subtype_classification = subtype_classification
         self._include_sent_task = include_sent_task
-        self._include_token_task = include_token_task
+        self._include_word_piece_task = include_word_piece_task
 
 
     def compute(self, entity_logits, rel_logits, entity_types, rel_types, entity_sample_masks, rel_sample_masks, \
@@ -31,8 +31,9 @@ class SpERTLoss(Loss):
             subtype_labels = None,
             sent_logits = None,
             sent_labels = None,
-            token_logits = None,
-            token_labels = None
+            # word_piece_logits = None,
+            # word_piece_labels = None,
+            # word_piece_mask = None
             ):
 
 
@@ -46,7 +47,6 @@ class SpERTLoss(Loss):
         entity_sample_masks = entity_sample_masks.view(-1).float()
 
         entity_loss = self._entity_criterion(entity_logits, entity_types)
-
         entity_loss =  (entity_loss  * entity_sample_masks).sum() / entity_sample_masks.sum()
 
 
@@ -79,9 +79,14 @@ class SpERTLoss(Loss):
             sent_loss = self._sent_criterion(sent_logits, sent_labels).mean()
             train_loss += sent_loss
 
-        if self._include_token_task:
-            token_loss = self._token_criterion(token_logits, token_labels).mean()
-            train_loss += token_loss
+        # if self._include_word_piece_task:
+        #
+        #     word_piece_logits = word_piece_logits.view(-1, word_piece_logits.shape[-1])
+        #     word_piece_labels = word_piece_labels.view(-1)
+        #     m = word_piece_mask.view(-1).bool()
+        #
+        #     word_piece_loss = self._word_piece_criterion(word_piece_logits[m], word_piece_labels[m]).mean()
+        #     train_loss += word_piece_loss
 
         train_loss.backward()
         torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._max_grad_norm)

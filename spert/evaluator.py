@@ -2,7 +2,7 @@ import os
 import os
 import warnings
 from typing import List, Tuple, Dict
-
+import pandas as pd
 import torch
 from sklearn.metrics import precision_recall_fscore_support as prfs
 from transformers import BertTokenizer
@@ -44,6 +44,8 @@ class Evaluator:
         self._gt_sent_labels = []  # ground truth
         self._pred_sent_labels = []  # prediction
 
+        # self._gt_word_piece_labels = []  # ground truth
+        # self._pred_word_piece_labels = []  # prediction
 
         self._pseudo_entity_type = EntityType('Entity', 1, 'Entity', 'Entity')  # for span only evaluation
 
@@ -51,24 +53,34 @@ class Evaluator:
 
     def eval_batch(self, batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
                    batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch: dict):
-        batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels = prediction.convert_predictions( \
+                   # batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch_word_piece_clf: torch.tensor, batch: dict):
+
+        entities, subtypes, relations, sent_labels = prediction.convert_predictions( \
                                 batch_entity_clf = batch_entity_clf,
                                 batch_subtype_clf = batch_subtype_clf,
                                 batch_rel_clf = batch_rel_clf,
                                 batch_rels = batch_rels,
                                 batch_sent_clf = batch_sent_clf,
+                                # batch_word_piece_clf = batch_word_piece_clf,
                                 batch = batch,
                                 rel_filter_threshold = self._rel_filter_threshold,
                                 input_reader = self._input_reader,
                                 no_overlapping = self._no_overlapping)
 
-        self._pred_entities.extend(batch_pred_entities)
-        self._pred_subtypes.extend(batch_pred_subtypes)
-        self._pred_relations.extend(batch_pred_relations)
-        self._pred_sent_labels.extend(batch_pred_sent_labels)
+        self._pred_entities.extend(entities)
+        self._pred_subtypes.extend(subtypes)
+        self._pred_relations.extend(relations)
+        self._pred_sent_labels.extend(sent_labels)
+        # self._pred_word_piece_labels.extend(word_piece_labels)
 
     def compute_scores(self):
         print("Evaluation")
+
+
+        print("")
+        print("--- Word piece labels ---")
+        print("")
+        #self._score_word_piece_labels(self._gt_word_piece_labels, self._pred_word_piece_labels, print_results=True)
 
         print("")
         print("--- Entities (named entity recognition (NER)) ---")
@@ -194,6 +206,7 @@ class Evaluator:
             self._gt_subtypes.append(sample_gt_subtypes)
             self._gt_relations.append(sample_gt_relations)
             self._gt_sent_labels.append(doc.sent_labels)
+            #self._gt_word_piece_labels.append(doc.word_piece_labels)
 
     def _convert_by_setting(self, gt: List[List[Tuple]], pred: List[List[Tuple]],
                             include_entity_types: bool = True, include_score: bool = False):
@@ -254,6 +267,44 @@ class Evaluator:
 
         metrics = self._compute_metrics(gt_flat, pred_flat, types, print_results)
         return metrics
+
+    def _score_word_piece_labels(self, gt, pred, print_results=False):
+
+
+        gt_flat = []
+        pred_flat = []
+        assert len(gt) == len(pred)
+        for g, p in zip(gt, pred):
+            assert len(g) == len(p)
+            gt_flat.extend(g)
+            pred_flat.extend(p)
+
+        labels = sorted(list(set(gt_flat + pred_flat)))
+        labels.remove('None')
+
+        per_type = prfs(gt_flat, pred_flat, labels=labels, average=None, zero_division=0)
+        micro =    prfs(gt_flat, pred_flat, labels=labels, average='micro', zero_division=0)[:-1]
+        macro =    prfs(gt_flat, pred_flat, labels=labels, average='macro', zero_division=0)[:-1]
+        total_support = sum(per_type[-1])
+        #print(per_type)
+
+        #print(micro)
+
+        columns=["type", "precision", "recall", "f1", "support"]
+        columns=["precision", "recall", "f1", "support"]
+        df_per_type = pd.DataFrame(dict(zip(columns, per_type)))
+        df_per_type.insert(0, 'type', labels)
+
+        df_micro = pd.DataFrame([micro], columns=["precision", "recall", "f1"])
+
+        if print_results:
+            print(df_per_type)
+            print(df_micro)
+
+        return True
+
+
+
 
     def _compute_metrics(self, gt_all, pred_all, types, print_results: bool = False):
         labels = [t.index for t in types]

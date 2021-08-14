@@ -165,7 +165,7 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
 
 
     sent_labels = torch.tensor(doc.sent_labels, dtype=torch.float32)
-    word_piece_labels = torch.tensor(doc.word_piece_labels, dtype=torch.float32)
+    word_piece_labels = torch.tensor(doc.word_piece_label_idxs, dtype=torch.long)
 
 
     return dict(encodings=encodings, context_masks=context_masks,
