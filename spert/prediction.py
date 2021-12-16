@@ -6,6 +6,14 @@ import torch
 from spert import util
 from spert.input_reader import BaseInputReader
 
+START_IDX = 0
+END_IDX = 1
+ENTITY_TYPE_IDX = 2
+SCORE_IDX = 3
+
+HEAD_IDX = 0
+TAIL_IDX = 1
+
 
 def convert_predictions( \
         batch_entity_clf: torch.tensor,
@@ -76,11 +84,16 @@ def convert_predictions( \
                                                         entity_types, entity_spans, input_reader)
 
         if no_overlapping:
-            sample_pred_subtypes, _ = remove_overlapping(sample_pred_subtypes,
-                                                            sample_pred_relations)
 
-            sample_pred_entities, sample_pred_relations = remove_overlapping(sample_pred_entities,
-                                                                             sample_pred_relations)
+
+            # sample_pred_subtypes, _ = remove_overlapping(sample_pred_subtypes,
+            #                                                 sample_pred_relations)
+
+
+            sample_pred_entities, sample_pred_relations, sample_pred_subtypes = remove_overlapping_new(sample_pred_entities,
+                                                                             sample_pred_relations,
+                                                                             sample_pred_subtypes)
+
 
         sample_pred_sent_labels = _convert_pred_sent_labels(sent_labels, input_reader)
 
@@ -208,6 +221,48 @@ def remove_overlapping(entities, relations):
 
     return non_overlapping_entities, non_overlapping_relations
 
+def remove_overlapping_new(entities, relations, subtypes):
+
+    # sort entities by score, with highest scoring first
+    entities.sort(key=lambda x: x[SCORE_IDX], reverse=True)
+
+    # iterate over entities finding non overlapping spans
+    entities_keep = []
+    for entity in entities:
+
+        if not _is_overlapping_new(entity, entities_keep):
+            entities_keep.append(entity)
+
+    # sort entities by start in sequential order
+    entities_keep.sort()
+
+    # get entities spans for filtering relations in subtypes
+    entity_spans = [(start, end) for start, end, _, _ in entities_keep]
+
+    # iterate over relations, only keeping relations where both entities are in keep
+    relations_keep = []
+    for rel in relations:
+
+        # get head and tail spans
+        head = rel[HEAD_IDX]
+        tail = rel[TAIL_IDX]
+
+        head_span = (head[START_IDX], head[END_IDX])
+        tail_span = (tail[START_IDX], tail[END_IDX])
+
+        # make sure a bold head and tail are present in keep
+        if (head_span in entity_spans) and (tail_span in entity_spans):
+            relations_keep.append(rel)
+
+    # iterate over subtypes, only keep! sub types where span is in keep
+    subtypes_keep = []
+    for subtype in subtypes:
+        subtype_span = (subtype[START_IDX], subtype[END_IDX])
+        if subtype_span in entity_spans:
+            subtypes_keep.append(subtype)
+
+
+    return (entities_keep, relations_keep, subtypes_keep)
 
 def _is_overlapping(e1, entities):
     for e2 in entities:
@@ -216,10 +271,31 @@ def _is_overlapping(e1, entities):
 
     return False
 
+def _is_overlapping_new(e1, entities):
+    for e2 in entities:
+        if _check_overlap_new(e1, e2):
+            return True
+
+    return False
 
 def _check_overlap(e1, e2):
     if e1 == e2 or e1[1] <= e2[0] or e2[1] <= e1[0]:
         return False
+    else:
+        return True
+
+def _check_overlap_new(e1, e2):
+
+
+
+    # flag as not overlapping
+    if (e1 == e2) or \
+       (e1[END_IDX] <= e2[START_IDX]) or \
+       (e2[END_IDX] <= e1[START_IDX]) or \
+       (e1[ENTITY_TYPE_IDX].short_name == e2[ENTITY_TYPE_IDX].short_name):
+        return False
+
+    # flag as overlapping
     else:
         return True
 

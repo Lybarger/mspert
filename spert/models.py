@@ -4,6 +4,7 @@ from transformers import BertConfig
 from transformers import BertModel
 from transformers import BertPreTrainedModel
 
+
 from allennlp.modules import FeedForward
 from allennlp.nn import Activation
 import torch.nn.functional as F
