@@ -79,6 +79,8 @@ class EntityType:
     def __hash__(self):
         return hash(self._identifier)
 
+    def __str__(self):
+        return str(self.__dict__)
 
 class Token:
     def __init__(self, tid: int, index: int, span_start: int, span_end: int, phrase: str):
@@ -291,6 +293,7 @@ class Document:
         # byte-pair document encoding including special tokens ([CLS] and [SEP])
         self._encoding = encoding
 
+
     @property
     def doc_id(self):
         return self._doc_id
@@ -376,8 +379,9 @@ class Dataset(TorchDataset):
         self._label = label
         self._rel_types = rel_types
         self._entity_types = entity_types
-        self._subtypes = subtypes
+        self._subtype_types = subtypes
         self._sent_types = sent_types
+
 
         self._neg_entity_count = neg_entity_count
         self._neg_rel_count = neg_rel_count
@@ -395,6 +399,9 @@ class Dataset(TorchDataset):
         self._rid = 0
         self._eid = 0
         self._tid = 0
+
+
+
 
     def iterate_documents(self, batch_size, order=None, truncate=False):
         return BatchIterator(self.documents, batch_size, order=order, truncate=truncate)
@@ -425,11 +432,25 @@ class Dataset(TorchDataset):
 
         return document
 
-    def create_entity(self, entity_type, subtype, tokens, phrase) -> (Entity, Entity):
+    # def create_entity(self, entity_type, subtype, tokens, phrase) -> (Entity, Entity):
+    #     entity_mention =  Entity(self._eid, entity_type, tokens, phrase)
+    #     subtype_mention = Entity(self._eid, subtype, tokens, phrase)
+    #     self._entities[self._eid] = entity_mention
+    #     self._subtypes[self._eid] = subtype_mention
+    #     self._eid += 1
+    #     return (entity_mention, subtype_mention)
+
+
+    def create_entity(self, entity_type, subtype_dict, tokens, phrase) -> (Entity, Entity):
         entity_mention =  Entity(self._eid, entity_type, tokens, phrase)
-        subtype_mention = Entity(self._eid, subtype, tokens, phrase)
+
+        subtype_mention = OrderedDict()
+        for layer_name, subtype in subtype_dict.items():
+            subtype_mention[layer_name] = Entity(self._eid, subtype, tokens, phrase)
+
         self._entities[self._eid] = entity_mention
         self._subtypes[self._eid] = subtype_mention
+
         self._eid += 1
         return (entity_mention, subtype_mention)
 
@@ -443,19 +464,28 @@ class Dataset(TorchDataset):
         return len(self._documents)
 
     def __getitem__(self, index: int):
+
+
         doc = self._documents[index]
+
 
         if self._mode == Dataset.TRAIN_MODE:
 
-            return sampling.create_train_sample( \
+            sample = sampling.create_train_sample( \
                         doc = doc,
                         neg_entity_count = self._neg_entity_count,
                         neg_rel_count = self._neg_rel_count,
                         max_span_size = self._max_span_size,
-                        rel_type_count = len(self._rel_types))
+                        rel_type_count = len(self._rel_types),
+                        subtype_types = self._subtype_types)
+
+            return sample
 
         else:
-            return sampling.create_eval_sample(doc, self._max_span_size)
+
+            sample = sampling.create_eval_sample(doc, self._max_span_size)
+
+            return sample
 
     def switch_mode(self, mode):
         self._mode = mode

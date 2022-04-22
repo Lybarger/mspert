@@ -2,6 +2,7 @@ import os
 import os
 import warnings
 from typing import List, Tuple, Dict
+from collections import OrderedDict
 import pandas as pd
 import torch
 from sklearn.metrics import precision_recall_fscore_support as prfs
@@ -86,16 +87,66 @@ class Evaluator:
         print("--- Entities (named entity recognition (NER)) ---")
         print("An entity is considered correct if the entity type and span is predicted correctly")
         print("")
+
         gt, pred = self._convert_by_setting(self._gt_entities, self._pred_entities, include_entity_types=True)
         ner_eval = self._score(gt, pred, print_results=True)
+
+
 
         print("")
         print("--- Subtypes (named entity recognition (NER)) ---")
         print("An entity is considered correct if the entity type and span is predicted correctly")
         print("")
+
+
+
+        layer_names = self._input_reader._subtypes.keys()
+
+        gt_subtypes = OrderedDict([(n, []) for n in layer_names])
+        for doc in self._gt_subtypes[0:20]:
+
+            for n in layer_names:
+                gt_subtypes[n].append([])
+
+            for d in doc[0:10]:
+                for n, (start, end, ent) in d.items():
+                    gt_subtypes[n][-1].append((start, end, ent))
+
+
+
+        pred_subtypes = OrderedDict([(n, []) for n in layer_names])
+        for doc in self._pred_subtypes[0:20]:
+
+            for n in layer_names:
+                pred_subtypes[n].append([])
+
+            for (start, end, ent_dict) in doc:
+                for n, ent in d.items():
+                    pred_subtypes[n][-1].append((start, end, ent))
+
+
+        z = sldfjlsdkjf
+        pred_subtypes = []
+        for S in self._pred_subtypes:
+            D = []
+            # print('SSSSSSSSSSS', type(S), len(S))
+            for start, end, subtype_dict in S:
+                d = {}
+                for layer_name, entity in subtype_dict.items():
+                    d[layer_name] = (start, end, entity)
+                D.append(d)
+            pred_subtypes.append(D)
+
+        for S in pred_subtype[0:20]:
+            for s in S[0:20]:
+                print(s)
+
+
+        z = sldjflskdjflksjdlkfjslkdjflksjdlkfjslkdjflksjdflksjdlkfjsdkljf
+
         gt, pred = self._convert_by_setting(self._gt_subtypes, self._pred_subtypes, include_entity_types=True)
         ner_eval_st = self._score(gt, pred, print_results=True)
-
+        z = sldjflskdjflksjdlkfjslkdjflksjdlkfjslkdjflksjdflksjdlkfjsdkljf
 
         print("")
         print("--- Relations ---")
@@ -188,19 +239,46 @@ class Evaluator:
     def _convert_gt(self, docs: List[Document]):
         for doc in docs:
             gt_relations = doc.relations
+
+            # list of Entity objects
             gt_entities = doc.entities
+
+            # list of dict
+            #   dict keys - layer_name
+            #   dict vals - Entity object
             gt_subtypes = doc.subtypes
 
+            assert len(gt_entities) == len(gt_subtypes)
+
             # convert ground truth relations and entities for precision/recall/f1 evaluation
+
             sample_gt_entities = [entity.as_tuple() for entity in gt_entities]
-            sample_gt_subtypes = [subtype.as_tuple() for subtype in gt_subtypes]
+
+
+            # sample_gt_subtypes = [subtype.as_tuple() for subtype in gt_subtypes]
+            # if len(gt_subtypes) > 0:
+            #     print(gt_subtypes)
+            #     z = sldfkj
+            sample_gt_subtypes = []
+            for S in gt_subtypes:
+                S = OrderedDict([(layer_name, s.as_tuple()) for layer_name, s in S.items()])
+                sample_gt_subtypes.append(S)
+
             sample_gt_relations = [rel.as_tuple() for rel in gt_relations]
 
             if self._no_overlapping:
-                sample_gt_subtypes, _ = prediction.remove_overlapping(sample_gt_subtypes,
-                                                                                        sample_gt_relations)
-                sample_gt_entities, sample_gt_relations = prediction.remove_overlapping(sample_gt_entities,
-                                                                                        sample_gt_relations)
+                # for layer_name,
+                # sample_gt_subtypes, _ = prediction.remove_overlapping(sample_gt_subtypes,
+                #                                                                         sample_gt_relations)
+                #
+                # sample_gt_entities, sample_gt_relations = prediction.remove_overlapping(sample_gt_entities,
+                #                                                                         sample_gt_relations)
+
+                sample_gt_entities, sample_gt_relations, sample_gt_subtypes = \
+                            prediction.remove_overlapping(sample_gt_entities,
+                                                        sample_gt_relations,
+                                                        sample_gt_subtypes)
+
 
             self._gt_entities.append(sample_gt_entities)
             self._gt_subtypes.append(sample_gt_subtypes)

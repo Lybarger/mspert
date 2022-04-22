@@ -51,6 +51,8 @@ class SpERTTrainer(BaseTrainer):
                                         args.neg_relation_count, args.max_span_size, self._logger)
         train_dataset = input_reader.read(train_path, train_label)
         validation_dataset = input_reader.read(valid_path, valid_label)
+
+
         self._log_datasets(input_reader)
 
         train_sample_count = train_dataset.document_count
@@ -123,6 +125,7 @@ class SpERTTrainer(BaseTrainer):
         self._logger.info("Saved in: %s" % self._save_path)
         self._close_summary_writer()
 
+        x = END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_
         return (predictions_path)
 
     def eval(self, dataset_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
@@ -172,6 +175,7 @@ class SpERTTrainer(BaseTrainer):
         util.check_version(config, model_class, self._args.model_path)
 
         config.spert_version = model_class.VERSION
+
         model = model_class.from_pretrained(self._args.model_path,
                                             config = config,
                                             # SpERT model parameters
@@ -200,6 +204,7 @@ class SpERTTrainer(BaseTrainer):
                      updates_epoch: int, epoch: int):
         self._logger.info("Train epoch: %s" % epoch)
 
+
         # create data loader
         dataset.switch_mode(Dataset.TRAIN_MODE)
         data_loader = DataLoader(dataset, batch_size=self._args.train_batch_size, shuffle=True, drop_last=True,
@@ -213,6 +218,7 @@ class SpERTTrainer(BaseTrainer):
             model.train()
             batch = util.to_device(batch, self._device)
 
+
             # forward step
             # entity_logits, subtype_logits, rel_logits, sent_logits, word_piece_logits = model( \
             entity_logits, subtype_logits, rel_logits, sent_logits = model( \
@@ -223,6 +229,8 @@ class SpERTTrainer(BaseTrainer):
                                                 entity_sizes = batch['entity_sizes'],
                                                 relations = batch['rels'],
                                                 rel_masks = batch['rel_masks'])
+
+
 
             # compute loss and optimize parameters
             batch_loss = compute_loss.compute( \
@@ -240,6 +248,7 @@ class SpERTTrainer(BaseTrainer):
                                             # word_piece_labels = batch["word_piece_labels"],
                                             # word_piece_mask = batch["context_masks"]
                                             )
+
 
             # logging
             iteration += 1
@@ -314,7 +323,7 @@ class SpERTTrainer(BaseTrainer):
         self._log_eval(*ner_eval, *subtype_eval, *rel_eval, *rel_nec_eval,
                        epoch, iteration, global_iteration, dataset.label)
 
-        if self._args.store_predictions and not self._args.no_overlapping:
+        if self._args.store_predictions: # and not self._args.no_overlapping:
             evaluator.store_predictions()
 
         if self._args.store_examples:
@@ -464,8 +473,10 @@ class SpERTTrainer(BaseTrainer):
             self._logger.info('\t' + e.verbose_name + '=' + str(e.index))
 
         self._logger.info("Subtypes:")
-        for e in input_reader.subtypes.values():
-            self._logger.info('\t' + e.verbose_name + '=' + str(e.index))
+        for layer_name, layer_def in input_reader.subtypes.items():
+            self._logger.info('\t' + layer_name)
+            for label, e in layer_def.items():
+                self._logger.info('\t\t' + e.verbose_name + '=' + str(e.index))
 
 
         self._logger.info("Relations:")

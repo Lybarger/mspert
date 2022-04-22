@@ -1,11 +1,11 @@
 import random
-
+from collections import OrderedDict
 import torch
 
 from spert import util
 
 
-def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span_size: int, rel_type_count: int):
+def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span_size: int, rel_type_count: int, subtype_types: dict):
     encodings = doc.encoding
     token_count = len(doc.tokens)
 
@@ -26,9 +26,12 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
 
         pos_entity_sizes.append(len(e.tokens))
 
-    pos_subtypes = []
-    for s in doc.subtypes:
-        pos_subtypes.append(s.entity_type.index)
+    pos_subtypes = OrderedDict([(k, []) for k in subtype_types.keys()])
+    for subtypes in doc.subtypes:
+        # pos_subtypes.append(s.entity_type.index)
+        for layer_name, s in subtypes.items():
+            pos_subtypes[layer_name].append(s.entity_type.index)
+
 
     # positive relations
 
@@ -84,7 +87,13 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
 
     neg_entity_types = [0] * len(neg_entity_spans)
 
-    neg_subtypes = [0] * len(neg_entity_spans)
+    # neg_subtypes = [0] * len(neg_entity_spans)
+    neg_subtypes = OrderedDict([(k, [0] * len(neg_entity_spans)) \
+                                                for k in subtype_types.keys()])
+
+
+
+
 
     # negative relations
     # use only strong negative relations, i.e. pairs of actual (labeled) entities that are not related
@@ -111,13 +120,18 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
     entity_masks_adj = pos_entity_masks_adj + neg_entity_masks_adj
     entity_sizes = pos_entity_sizes + list(neg_entity_sizes)
 
-    subtypes = pos_subtypes + neg_subtypes
+    # subtypes = pos_subtypes + neg_subtypes
+    subtypes = OrderedDict([(k, []) for k in subtype_types.keys()])
+    for k in subtypes.keys():
+        subtypes[k] = pos_subtypes[k] + neg_subtypes[k]
 
     rels = pos_rels + neg_rels
     rel_types = pos_rel_types + neg_rel_types
     rel_masks = pos_rel_masks + neg_rel_masks
 
-    assert len(entity_masks) == len(entity_sizes) == len(entity_types) == len(subtypes)
+    assert len(entity_masks) == len(entity_sizes) == len(entity_types)
+    for k, v in subtypes.items():
+        assert len(entity_types) == len(v)
     assert len(entity_masks) == len(entity_masks_adj)
     assert len(rels) == len(rel_masks) == len(rel_types)
 
@@ -139,7 +153,11 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
         entity_sizes = torch.tensor(entity_sizes, dtype=torch.long)
         entity_sample_masks = torch.ones([entity_masks.shape[0]], dtype=torch.bool)
 
-        subtypes = torch.tensor(subtypes, dtype=torch.long)
+        # subtypes = torch.tensor(subtypes, dtype=torch.long)
+        for k, v in subtypes.items():
+            subtypes[k] = torch.tensor(v, dtype=torch.long)
+        subtypes = torch.stack(list(subtypes.values()) ,dim=1)
+
     else:
         # corner case handling (no pos/neg entities)
         entity_types = torch.zeros([1], dtype=torch.long)
@@ -148,7 +166,10 @@ def create_train_sample(doc, neg_entity_count: int, neg_rel_count: int, max_span
         entity_sizes = torch.zeros([1], dtype=torch.long)
         entity_sample_masks = torch.zeros([1], dtype=torch.bool)
 
-        subtypes = torch.zeros([1], dtype=torch.long)
+        # subtypes = torch.zeros([1], dtype=torch.long)
+        for k, v in subtypes.items():
+            subtypes[k] = torch.zeros([1], dtype=torch.long)
+        subtypes = torch.stack(list(subtypes.values()) ,dim=1)
 
     if rels:
         rels = torch.tensor(rels, dtype=torch.long)

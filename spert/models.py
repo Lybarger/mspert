@@ -3,7 +3,7 @@ from torch import nn as nn
 from transformers import BertConfig
 from transformers import BertModel
 from transformers import BertPreTrainedModel
-
+from collections import OrderedDict
 
 from allennlp.modules import FeedForward
 from allennlp.nn import Activation
@@ -77,7 +77,8 @@ class SpERT(BertPreTrainedModel):
 
 
         subtype_input_dim = entity_input_dim
-        if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
+        # if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
+        if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT]:
             pass
         elif self.subtype_classification in [CONCAT_LOGITS, CONCAT_PROBS]:
             subtype_input_dim += entity_types
@@ -101,21 +102,27 @@ class SpERT(BertPreTrainedModel):
                                 dropout = 0.0)
         print("entity_classifier:", self.entity_classifier)
 
-        self.subtype_classifier = FeedForward( \
-                                input_dim = subtype_input_dim,
-                                num_layers = 1,
-                                hidden_dims = subtypes,
-                                activations = linear_activation,
-                                dropout = 0.0)
-        print("subtype_classifier:", self.subtype_classifier)
 
-        self.subtype_bias = FeedForward( \
-                                input_dim = entity_types,
-                                num_layers = 1,
-                                hidden_dims = subtypes,
-                                activations = linear_activation,
-                                dropout = 0.0)
-        print("subtype_bias:", self.subtype_bias)
+        self.subtype_classifiers = nn.ModuleDict()
+        for layer_name, label_count in subtypes.items():
+
+            self.subtype_classifiers[layer_name] = FeedForward( \
+                                    input_dim = subtype_input_dim,
+                                    num_layers = 1,
+                                    hidden_dims = label_count,
+                                    activations = linear_activation,
+                                    dropout = 0.0)
+        print("subtype_classifiers:")
+        for layer_name, classifier in self.subtype_classifiers.items():
+            print(f"\t\t{layer_name} - {classifier}")
+
+        # self.subtype_bias = FeedForward( \
+        #                         input_dim = entity_types,
+        #                         num_layers = 1,
+        #                         hidden_dims = subtypes,
+        #                         activations = linear_activation,
+        #                         dropout = 0.0)
+        # print("subtype_bias:", self.subtype_bias)
 
 
         self.sent_classifier = FeedForward( \
@@ -338,7 +345,8 @@ class SpERT(BertPreTrainedModel):
 
 
         subtype_repr = entity_repr
-        if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
+        # if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT, LABEL_BIAS]:
+        if self.subtype_classification in [NO_SUBTYPE, NO_CONCAT]:
             pass
         elif self.subtype_classification == CONCAT_LOGITS:
             subtype_repr = torch.cat([subtype_repr, entity_clf], dim=2)
@@ -348,12 +356,13 @@ class SpERT(BertPreTrainedModel):
         else:
             raise ValueError(f"Invalid subtype classification: {self.subtype_classification}")
 
-        subtype_clf = self.subtype_classifier(subtype_repr)
 
-        if self.subtype_classification == LABEL_BIAS:
-            subtype_clf += self.subtype_bias(entity_clf)
+        subtype_clf = OrderedDict()
+        for layer_name, subtype_classifier in self.subtype_classifiers.items():
+            subtype_clf[layer_name] = subtype_classifier(subtype_repr)
 
-
+        # if self.subtype_classification == LABEL_BIAS:
+            # subtype_clf += self.subtype_bias(entity_clf)
 
         return entity_clf, subtype_clf, entity_spans_pool
 

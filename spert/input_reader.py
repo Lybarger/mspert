@@ -16,13 +16,15 @@ from spert.opt import spacy
 class BaseInputReader(ABC):
     def __init__(self, types_path: str, tokenizer: BertTokenizer, neg_entity_count: int = None,
                  neg_rel_count: int = None, max_span_size: int = None, logger: Logger = None, **kwargs):
+
+
         types = json.load(open(types_path), object_pairs_hook=OrderedDict)  # entity + relation types
+
 
         self._entity_types = OrderedDict()
         self._idx2entity_type = OrderedDict()
 
-        self._subtypes = OrderedDict()
-        self._idx2subtype = OrderedDict()
+
 
         self._relation_types = OrderedDict()
         self._idx2relation_type = OrderedDict()
@@ -43,17 +45,41 @@ class BaseInputReader(ABC):
             self._entity_types[key] = entity_type
             self._idx2entity_type[i + 1] = entity_type
 
-        # subtypes
-        # add 'None' subtype
-        none_subtype = EntityType('None', 0, 'None', 'No Subtype')
-        self._subtypes['None'] = none_subtype
-        self._idx2subtype[0] = none_subtype
 
-        # specified entity types
-        for i, (key, v) in enumerate(types['subtypes'].items()):
-            subtype = EntityType(key, i + 1, v['short'], v['verbose'])
-            self._subtypes[key] = subtype
-            self._idx2subtype[i + 1] = subtype
+        # # subtypes
+        # # add 'None' subtype
+        # none_subtype = EntityType('None', 0, 'None', 'No Subtype')
+        # self._subtypes['None'] = none_subtype
+        # self._idx2subtype[0] = none_subtype
+        #
+        # # specified entity types
+        # for i, (key, v) in enumerate(types['subtypes'].items()):
+        #     subtype = EntityType(key, i + 1, v['short'], v['verbose'])
+        #     self._subtypes[key] = subtype
+        #     self._idx2subtype[i + 1] = subtype
+
+
+        self._subtypes = OrderedDict()
+        self._idx2subtype = OrderedDict()
+
+        # define None for subtype
+        none_subtype = EntityType('None', 0, 'None', 'No Subtype')
+
+        # iterate over subtype layers
+        for i, (layer_name, layer_def) in enumerate(types['subtypes'].items()):
+
+            self._subtypes[layer_name] = OrderedDict()
+            self._idx2subtype[layer_name] = OrderedDict()
+
+            self._subtypes[layer_name]['None'] = none_subtype
+            self._idx2subtype[layer_name][0] = none_subtype
+
+            # iterate over labels in current layer subtype
+            for i, (key, v) in enumerate(layer_def.items()):
+                subtype = EntityType(key, i + 1, v['short'], v['verbose'])
+                self._subtypes[layer_name][key] = subtype
+                self._idx2subtype[layer_name][i + 1] = subtype
+
 
 
         # relations
@@ -99,8 +125,8 @@ class BaseInputReader(ABC):
         entity = self._idx2entity_type[idx]
         return entity
 
-    def get_subtype(self, idx) -> EntityType:
-        subtype = self._idx2subtype[idx]
+    def get_subtype(self, layer_name, idx) -> EntityType:
+        subtype = self._idx2subtype[layer_name][idx]
         return subtype
 
     def get_relation_type(self, idx) -> RelationType:
@@ -147,10 +173,16 @@ class BaseInputReader(ABC):
     @property
     def entity_type_count(self):
         return len(self._entity_types)
+    #
+    # @property
+    # def subtype_count(self):
+    #     return len(self._subtypes)
 
     @property
     def subtype_count(self):
-        return len(self._subtypes)
+        return OrderedDict([(layer_name, len(layer_def.keys())) \
+                        for layer_name, layer_def in self._subtypes.items()])
+
 
     @property
     def sent_type_count(self):
@@ -178,6 +210,8 @@ class JsonInputReader(BaseInputReader):
         super().__init__(types_path, tokenizer, neg_entity_count, neg_rel_count, max_span_size, logger)
 
     def read(self, dataset_path, dataset_label):
+
+
         dataset = Dataset( \
                         label = dataset_label,
                         rel_types = self._relation_types,
@@ -187,6 +221,8 @@ class JsonInputReader(BaseInputReader):
                         neg_entity_count = self._neg_entity_count,
                         neg_rel_count = self._neg_rel_count,
                         max_span_size = self._max_span_size)
+
+
         self._parse_dataset(dataset_path, dataset)
         self._datasets[dataset_label] = dataset
         return dataset
@@ -213,6 +249,7 @@ class JsonInputReader(BaseInputReader):
 
         # parse entity mentions
         entities, subtypes = self._parse_entities(jentities, jsubtypes, doc_tokens, dataset)
+
 
         # parse relations
         relations = self._parse_relations(jrelations, entities, dataset)
@@ -262,23 +299,37 @@ class JsonInputReader(BaseInputReader):
 
     def _parse_entities(self, jentities, jsubtypes, doc_tokens, dataset) -> (List[Entity], List[Entity]):
 
-        assert len(jentities) == len(jsubtypes)
-
         entities = []
         subtypes = []
 
-        for entity_idx, jentity in enumerate(jentities):
+        assert len(jentities) == len(jsubtypes)
+        for entity_idx, (jentity, jsubtype) in enumerate(zip(jentities, jsubtypes)):
+
+            # jentity is a dict
+            #    keys: "type", "start", "end"
+
+            # jsubtype is a dict
+            #    keys: "type", "start", "end"
+
+            # self._entity_types is a dict  mapping labels to class objects
+
+
             entity_type = self._entity_types[jentity['type']]
             start, end = jentity['start'], jentity['end']
 
 
-            jsubtype = jsubtypes[entity_idx]
-            subtype = self._subtypes[jsubtype['type']]
+            assert (start, end) == (jsubtype['start'], jsubtype['end'])
+
+            subtype_dict = OrderedDict()
+            for layer_name, layer_value in jsubtype['type'].items():
+                subtype_dict[layer_name] = self._subtypes[layer_name][layer_value]
+
 
             # create entity mention
             tokens = doc_tokens[start:end]
             phrase = " ".join([t.phrase for t in tokens])
-            entity, subtype = dataset.create_entity(entity_type, subtype, tokens, phrase)
+            # entity, subtype = dataset.create_entity(entity_type, subtype, tokens, phrase)
+            entity, subtype = dataset.create_entity(entity_type, subtype_dict, tokens, phrase)
             entities.append(entity)
             subtypes.append(subtype)
 

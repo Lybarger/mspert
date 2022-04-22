@@ -1,6 +1,6 @@
 import json
 from typing import Tuple
-
+from collections import OrderedDict
 import torch
 
 from spert import util
@@ -33,9 +33,29 @@ def convert_predictions( \
     batch_entity_types *= batch['entity_sample_masks'].long()
 
     # get maximum activation (index of predicted entity type)
-    batch_subtypes = batch_subtype_clf.argmax(dim=-1)
-    # apply entity sample mask
-    batch_subtypes *= batch['entity_sample_masks'].long()
+    # batch_subtypes = batch_subtype_clf.argmax(dim=-1)
+    # # apply entity sample mask
+    # batch_subtypes *= batch['entity_sample_masks'].long()
+
+
+    # batch_subtype_clf: dict
+    #   keys: layer name
+    #   vals: logit tensor
+
+    batch_subtypes = OrderedDict()
+    for layer_name, logits in batch_subtype_clf.items():
+
+        # (batch_size, span_count, num_classes)
+        # logits
+
+        # get predictions from logits
+        # (batch_size, span_count)
+        predictions = logits.argmax(dim=-1)
+
+        # apply entity sample mask
+        predictions *= batch['entity_sample_masks'].long()
+
+        batch_subtypes[layer_name] = predictions
 
 
     # apply threshold to relations
@@ -55,12 +75,12 @@ def convert_predictions( \
     for i in range(batch_rel_clf.shape[0]):
         # get model predictions for sample
         entity_types = batch_entity_types[i]
-        subtypes = batch_subtypes[i]
+
 
         entity_spans = batch['entity_spans'][i]
 
         entity_clf = batch_entity_clf[i]
-        subtype_clf = batch_subtype_clf[i]
+        # subtype_clf = batch_subtype_clf[i]
 
         rel_clf = batch_rel_clf[i]
         rels = batch_rels[i]
@@ -71,13 +91,65 @@ def convert_predictions( \
         context_mask = batch["context_masks"][i]
 
         # convert predicted entities
-        sample_pred_entities = _convert_pred_entities(entity_types, entity_spans,
-                                                      entity_clf, input_reader,
-                                                      is_entity=True)
+        sample_pred_entities, valid_entity_indices = _convert_pred_entities(entity_types, entity_spans,
+                                                      entity_clf, input_reader)
 
-        sample_pred_subtypes = _convert_pred_entities(subtypes, entity_spans,
-                                                      subtype_clf, input_reader,
-                                                      is_entity=False)
+        #
+        sample_pred_subtypes = []
+
+        # iterate over layers
+        for i_layer, layer_name in enumerate(batch_subtypes.keys()):
+            # (span_count)
+            subtypes = batch_subtypes[layer_name][i]
+
+            # (span_count, num_classes)
+            subtype_clf = batch_subtype_clf[layer_name][i]
+
+            pred_subtypes = _convert_pred_subtypes( \
+                                            valid_entity_indices = valid_entity_indices,
+                                            entity_spans = entity_spans,
+                                            subtypes = subtypes,
+                                            subtype_scores = subtype_clf,
+                                            input_reader = input_reader,
+                                            layer_name = layer_name)
+
+            assert len(sample_pred_entities) == len(pred_subtypes)
+
+            # iterate over spans
+            for i_span, (start, end, entity, score) in enumerate(pred_subtypes):
+
+                # first layer
+                if i_layer == 0:
+                    y = OrderedDict()
+                    y["start"] = start
+                    y["end"] = end
+                    y["entities"] = OrderedDict()
+                    y["entities"][layer_name] = entity
+                    # y["scores"] =   OrderedDict()
+                    # y["scores"][layer_name] = score
+                    sample_pred_subtypes.append(y)
+
+                # second layer or later
+                else:
+                    start_current = sample_pred_subtypes[i_span]["start"]
+                    end_current =   sample_pred_subtypes[i_span]["end"]
+                    assert start_current == start, f"{start_current} vs {start}"
+                    assert end_current  == end,   f"{end_current} vs {end}"
+                    assert layer_name not in sample_pred_subtypes[i_span]["entities"]
+                    # assert layer_name not in sample_pred_subtypes[i_span]["scores"]
+
+                    sample_pred_subtypes[i_span]["entities"][layer_name] = entity
+                    # sample_pred_subtypes[i_span]["scores"][layer_name] = score
+
+        # list of tuple, (start, end, entity_dict, score_dict)
+        # for s in sample_pred_subtypes:
+        #     print('ssssssssssss', s)
+
+        sample_pred_subtypes = [tuple(s.values()) for s in sample_pred_subtypes]
+
+        # for s in sample_pred_subtypes:
+        #     print('SSSSSSSSSSSS', s)
+
 
         # convert predicted relations
         sample_pred_relations = _convert_pred_relations(rel_clf, rels,
@@ -88,12 +160,9 @@ def convert_predictions( \
 
             # sample_pred_subtypes, _ = remove_overlapping(sample_pred_subtypes,
             #                                                 sample_pred_relations)
-
-
             sample_pred_entities, sample_pred_relations, sample_pred_subtypes = remove_overlapping_new(sample_pred_entities,
                                                                              sample_pred_relations,
                                                                              sample_pred_subtypes)
-
 
         sample_pred_sent_labels = _convert_pred_sent_labels(sent_labels, input_reader)
 
@@ -115,8 +184,7 @@ def convert_predictions( \
 
 
 def _convert_pred_entities(entity_types: torch.tensor, entity_spans: torch.tensor,
-                           entity_scores: torch.tensor, input_reader: BaseInputReader,
-                           is_entity=True):
+                           entity_scores: torch.tensor, input_reader: BaseInputReader):
     # get entities that are not classified as 'None'
     valid_entity_indices = entity_types.nonzero().view(-1)
     pred_entity_types = entity_types[valid_entity_indices]
@@ -129,10 +197,7 @@ def _convert_pred_entities(entity_types: torch.tensor, entity_spans: torch.tenso
     for i in range(pred_entity_types.shape[0]):
         label_idx = pred_entity_types[i].item()
 
-        if is_entity:
-            entity_type = input_reader.get_entity_type(label_idx)
-        else:
-            entity_type = input_reader.get_subtype(label_idx)
+        entity_type = input_reader.get_entity_type(label_idx)
 
         start, end = pred_entity_spans[i].tolist()
         score = pred_entity_scores[i].item()
@@ -140,7 +205,39 @@ def _convert_pred_entities(entity_types: torch.tensor, entity_spans: torch.tenso
         converted_pred = (start, end, entity_type, score)
         converted_preds.append(converted_pred)
 
+    return (converted_preds, valid_entity_indices)
+
+
+def _convert_pred_subtypes(valid_entity_indices: torch.tensor, entity_spans: torch.tensor,
+                           subtypes: torch.tensor, subtype_scores: torch.tensor,
+                            input_reader: BaseInputReader, layer_name=None):
+
+    # get entities that are not classified as 'None'
+    pred_spans = entity_spans[valid_entity_indices]
+
+    pred_subtypes = subtypes[valid_entity_indices]
+    pred_subtype_scores = torch.gather(subtype_scores[valid_entity_indices], 1,
+                                      pred_subtypes.unsqueeze(1)).view(-1)
+
+    assert layer_name is not None
+
+    # convert to tuples (start, end, type, score)
+    converted_preds = []
+    for i in range(pred_subtypes.shape[0]):
+
+        label_idx = pred_subtypes[i].item()
+
+        label = input_reader.get_subtype(layer_name, label_idx)
+
+        start, end = pred_spans[i].tolist()
+        score = pred_subtype_scores[i].item()
+
+        converted_pred = (start, end, label, score)
+        converted_preds.append(converted_pred)
+
     return converted_preds
+
+
 
 
 def _convert_pred_relations(rel_clf: torch.tensor, rels: torch.tensor,
@@ -260,7 +357,6 @@ def remove_overlapping_new(entities, relations, subtypes):
         subtype_span = (subtype[START_IDX], subtype[END_IDX])
         if subtype_span in entity_spans:
             subtypes_keep.append(subtype)
-
 
     return (entities_keep, relations_keep, subtypes_keep)
 

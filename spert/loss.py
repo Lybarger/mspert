@@ -37,12 +37,13 @@ class SpERTLoss(Loss):
             ):
 
 
+
+
         # entity loss
         entity_logits = entity_logits.view(-1, entity_logits.shape[-1])
-        subtype_logits = subtype_logits.view(-1, subtype_logits.shape[-1])
 
         entity_types = entity_types.view(-1)
-        subtype_labels = subtype_labels.view(-1)
+
 
         entity_sample_masks = entity_sample_masks.view(-1).float()
 
@@ -69,8 +70,41 @@ class SpERTLoss(Loss):
 
         if self._subtype_classification != NO_SUBTYPE:
 
-            subtype_loss = self._entity_criterion(subtype_logits, subtype_labels)
-            subtype_loss = (subtype_loss * entity_sample_masks).sum() / entity_sample_masks.sum()
+            # subtype_logits - a dictionary of logits,
+            #       dictionary keys are subtype layers
+            #       logit tensor has shape (batch_size, span_count, num_classes)
+            # subtype_labels - tensor for all subtype layers
+            #       logic tensor has shape (batch_size, span_count, num_layers)
+
+            batch_size, span_count, num_layers = tuple(subtype_labels.shape)
+            assert num_layers == len(subtype_logits.keys())
+
+            subtype_loss = []
+            for i, (layer_name, sub_log) in enumerate(subtype_logits.items()):
+
+                # (batch_size, span_count)
+                sub_lab = subtype_labels[:,:,i].squeeze()
+
+                # (batch_size*span_count)
+                sub_lab = sub_lab.view(-1)
+
+                # (batch_size, span_count, num_classes)
+                # sub_log
+
+                # (batch_size * span_count, num_classes)
+                sub_log = sub_log.view(-1, sub_log.shape[-1])
+
+                # (batch_size * span_count)
+                sub_loss = self._entity_criterion(sub_log, sub_lab)
+
+                # scalar
+                sub_loss = (sub_loss * entity_sample_masks).sum() / entity_sample_masks.sum()
+
+                # collect loss across layers
+                subtype_loss.append(sub_loss)
+
+            # calculate total subtype loss
+            subtype_loss = torch.tensor(subtype_loss).sum()
 
             # corner case: no positive/negative relation samples
             train_loss += subtype_loss
