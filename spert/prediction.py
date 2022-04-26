@@ -178,6 +178,10 @@ def convert_predictions( \
         batch_pred_relations.append(sample_pred_relations)
         batch_pred_sent_labels.append(sample_pred_sent_labels)
 
+    # for S in batch_pred_subtypes:
+    #     for s in S:
+    #         print('sssssssssss', s)
+
 
     # return batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels, batch_pred_word_piece_labels
     return batch_pred_entities, batch_pred_subtypes, batch_pred_relations, batch_pred_sent_labels
@@ -416,7 +420,9 @@ def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, p
         sample_pred_relations = pred_relations[i]
         sample_pred_sent_labels = pred_sent_labels[i]
 
-        # convert entities
+        '''
+        Entities
+        '''
         converted_entities = []
         for j, entity in enumerate(sample_pred_entities):
             entity_span = entity[:2]
@@ -426,16 +432,41 @@ def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, p
             converted_entities.append(converted_entity)
         converted_entities = sorted(converted_entities, key=lambda e: e['start'])
 
+
+
+        '''
+        Subtypes
+        '''
         converted_subtypes = []
         for j, subtype in enumerate(sample_pred_subtypes):
-            subtype_span = subtype[:2]
+
+            # subtype (start, end, ent_dict)
+            #   end_dict {layer_name: EntityType, layer_name: EntityType, }
+            start, end, ent_dict = subtype
+
+            # subtype_span = subtype[:2]
+            subtype_span = (start, end)
+
             span_tokens = util.get_span_tokens(tokens, subtype_span)
-            subtype_type = subtype[2].identifier
+
+            # subtype_type = subtype[2].identifier
+            subtype_type = OrderedDict([(layer_name, entity.identifier) for layer_name, entity in ent_dict.items()])
+
             converted_subtype = dict(type=subtype_type, start=span_tokens[0].index, end=span_tokens[-1].index + 1)
             converted_subtypes.append(converted_subtype)
+
         converted_subtypes = sorted(converted_subtypes, key=lambda e: e['start'])
 
-        # convert relations
+        n = len(converted_entities)
+        m = len(converted_subtypes)
+        assert n == m, f"{n} == {m}"
+        n = [(d["start"], d["end"]) for d in converted_entities]
+        m = [(d["start"], d["end"]) for d in converted_subtypes]
+        assert n == m, f"{n} == {m}"
+
+        '''
+        Relations
+        '''
         converted_relations = []
         for relation in sample_pred_relations:
             head, tail = relation[:2]

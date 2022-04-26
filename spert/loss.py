@@ -1,7 +1,7 @@
 from abc import ABC
 
 import torch
-
+import logging
 
 from spert.models import NO_SUBTYPE, NO_CONCAT, CONCAT_LOGITS, CONCAT_PROBS, LABEL_BIAS
 
@@ -37,8 +37,12 @@ class SpERTLoss(Loss):
             ):
 
 
+        # aggregate loss across all objectives
+        total_loss = []
 
-
+        '''
+        Entity loss
+        '''
         # entity loss
         entity_logits = entity_logits.view(-1, entity_logits.shape[-1])
 
@@ -50,12 +54,13 @@ class SpERTLoss(Loss):
         entity_loss = self._entity_criterion(entity_logits, entity_types)
         entity_loss =  (entity_loss  * entity_sample_masks).sum() / entity_sample_masks.sum()
 
+        total_loss.append(entity_loss)
 
         # relation loss
         rel_sample_masks = rel_sample_masks.view(-1).float()
         rel_count = rel_sample_masks.sum()
 
-        train_loss = entity_loss
+
 
         if rel_count.item() != 0:
             rel_logits = rel_logits.view(-1, rel_logits.shape[-1])
@@ -66,7 +71,8 @@ class SpERTLoss(Loss):
             rel_loss = (rel_loss * rel_sample_masks).sum() / rel_count
 
             # joint loss
-            train_loss += rel_loss
+            # total_loss += rel_loss
+            total_loss.append(rel_loss)
 
         if self._subtype_classification != NO_SUBTYPE:
 
@@ -104,15 +110,24 @@ class SpERTLoss(Loss):
                 subtype_loss.append(sub_loss)
 
             # calculate total subtype loss
-            subtype_loss = torch.tensor(subtype_loss).sum()
+            subtype_loss = torch.stack(subtype_loss)
+            subtype_loss = subtype_loss.sum()
 
             # corner case: no positive/negative relation samples
-            train_loss += subtype_loss
+            # total_loss += subtype_loss
+            total_loss.append(subtype_loss)
 
         if self._include_sent_task:
             sent_loss = self._sent_criterion(sent_logits, sent_labels).mean()
-            train_loss += sent_loss
+            # total_loss += sent_loss
+            total_loss.append(sent_loss)
 
+
+        # sum loss across all objectives
+        total_loss = torch.stack(total_loss)
+        total_loss = total_loss.sum()
+
+        # logging.warn(f"entity={entity_loss:.3f}, subtype={subtype_loss:.3f}, total={total_loss:.3f}")
         # if self._include_word_piece_task:
         #
         #     word_piece_logits = word_piece_logits.view(-1, word_piece_logits.shape[-1])
@@ -120,11 +135,11 @@ class SpERTLoss(Loss):
         #     m = word_piece_mask.view(-1).bool()
         #
         #     word_piece_loss = self._word_piece_criterion(word_piece_logits[m], word_piece_labels[m]).mean()
-        #     train_loss += word_piece_loss
+        #     total_loss += word_piece_loss
 
-        train_loss.backward()
+        total_loss.backward()
         torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._max_grad_norm)
         self._optimizer.step()
         self._scheduler.step()
         self._model.zero_grad()
-        return train_loss.item()
+        return total_loss.item()

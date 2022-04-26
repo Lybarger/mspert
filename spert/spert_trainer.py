@@ -125,7 +125,6 @@ class SpERTTrainer(BaseTrainer):
         self._logger.info("Saved in: %s" % self._save_path)
         self._close_summary_writer()
 
-        x = END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_END__TRAIN_
         return (predictions_path)
 
     def eval(self, dataset_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
@@ -215,6 +214,7 @@ class SpERTTrainer(BaseTrainer):
         iteration = 0
         total = dataset.document_count // self._args.train_batch_size
         for batch in tqdm(data_loader, total=total, desc='Train epoch %s' % epoch):
+            # for batch in data_loader:            
             model.train()
             batch = util.to_device(batch, self._device)
 
@@ -253,6 +253,7 @@ class SpERTTrainer(BaseTrainer):
             # logging
             iteration += 1
             global_iteration = epoch * updates_epoch + iteration
+
 
             if global_iteration % self._args.train_log_iter == 0:
                 self._log_train(optimizer, batch_loss, epoch, iteration, global_iteration, dataset.label)
@@ -319,6 +320,7 @@ class SpERTTrainer(BaseTrainer):
 
 
         global_iteration = epoch * updates_epoch + iteration
+
         ner_eval, subtype_eval, rel_eval, rel_nec_eval = evaluator.compute_scores()
         self._log_eval(*ner_eval, *subtype_eval, *rel_eval, *rel_nec_eval,
                        epoch, iteration, global_iteration, dataset.label)

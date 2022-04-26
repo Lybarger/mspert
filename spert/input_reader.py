@@ -322,6 +322,8 @@ class JsonInputReader(BaseInputReader):
 
             subtype_dict = OrderedDict()
             for layer_name, layer_value in jsubtype['type'].items():
+                if layer_value is None:
+                    layer_value = "None"
                 subtype_dict[layer_name] = self._subtypes[layer_name][layer_value]
 
 

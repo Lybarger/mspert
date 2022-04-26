@@ -52,9 +52,15 @@ class Evaluator:
 
         self._convert_gt(self._dataset.documents)
 
+
+
+
     def eval_batch(self, batch_entity_clf: torch.tensor, batch_subtype_clf: torch.tensor, batch_rel_clf: torch.tensor,
                    batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch: dict):
                    # batch_rels: torch.tensor, batch_sent_clf: torch.tensor, batch_word_piece_clf: torch.tensor, batch: dict):
+
+
+
 
         entities, subtypes, relations, sent_labels = prediction.convert_predictions( \
                                 batch_entity_clf = batch_entity_clf,
@@ -108,8 +114,8 @@ class Evaluator:
             for n in layer_names:
                 gt_subtypes[n].append([])
 
-            for d in doc[0:10]:
-                for n, (start, end, ent) in d.items():
+            for ent_dict in doc[0:10]:
+                for n, (start, end, ent) in ent_dict.items():
                     gt_subtypes[n][-1].append((start, end, ent))
 
 
@@ -121,32 +127,20 @@ class Evaluator:
                 pred_subtypes[n].append([])
 
             for (start, end, ent_dict) in doc:
-                for n, ent in d.items():
+                for n, ent in ent_dict.items():
                     pred_subtypes[n][-1].append((start, end, ent))
 
 
-        z = sldfjlsdkjf
-        pred_subtypes = []
-        for S in self._pred_subtypes:
-            D = []
-            # print('SSSSSSSSSSS', type(S), len(S))
-            for start, end, subtype_dict in S:
-                d = {}
-                for layer_name, entity in subtype_dict.items():
-                    d[layer_name] = (start, end, entity)
-                D.append(d)
-            pred_subtypes.append(D)
+        for layer_name in gt_subtypes:
+            print("")
+            print(f"Subtype layer = {layer_name}")
+            print("")
 
-        for S in pred_subtype[0:20]:
-            for s in S[0:20]:
-                print(s)
+            gt = gt_subtypes[layer_name]
+            pred = pred_subtypes[layer_name]
 
-
-        z = sldjflskdjflksjdlkfjslkdjflksjdlkfjslkdjflksjdflksjdlkfjsdkljf
-
-        gt, pred = self._convert_by_setting(self._gt_subtypes, self._pred_subtypes, include_entity_types=True)
-        ner_eval_st = self._score(gt, pred, print_results=True)
-        z = sldjflskdjflksjdlkfjslkdjflksjdlkfjslkdjflksjdflksjdlkfjsdkljf
+            gt, pred = self._convert_by_setting(gt, pred, include_entity_types=True)
+            ner_eval_st = self._score(gt, pred, print_results=True)
 
         print("")
         print("--- Relations ---")
@@ -275,7 +269,7 @@ class Evaluator:
                 #                                                                         sample_gt_relations)
 
                 sample_gt_entities, sample_gt_relations, sample_gt_subtypes = \
-                            prediction.remove_overlapping(sample_gt_entities,
+                            prediction.remove_overlapping_new(sample_gt_entities,
                                                         sample_gt_relations,
                                                         sample_gt_subtypes)
 
