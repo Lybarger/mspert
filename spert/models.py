@@ -43,7 +43,7 @@ class SpERT(BertPreTrainedModel):
 
     def __init__(self, config: BertConfig, cls_token: int, relation_types: int, entity_types: int, subtypes: int, sent_label_types:int,
                  size_embedding: int, prop_drop: float, freeze_transformer: bool,  max_pairs: int = 100,
-                 subtype_classification: str = 'linear', projection_size: int = 200, projection_dropout: float = 0.0,
+                 subtype_classification: str = CONCAT_LOGITS, 
                  concat_sent_pred: bool=False, include_adjacent: bool=False, include_word_piece_task: bool=False, concat_word_piece_logits: bool=False):
         super(SpERT, self).__init__(config)
 

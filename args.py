@@ -5,41 +5,32 @@ def _add_common_args(arg_parser):
     arg_parser.add_argument('--config', type=str)
 
     # Input
-    arg_parser.add_argument('--types_path', type=str, help="Path to type specifications")
+
 
     # Preprocessing
+    arg_parser.add_argument('--model_path', type=str, help="Path to directory that contains model checkpoints")
     arg_parser.add_argument('--tokenizer_path', type=str, help="Path to tokenizer")
+
     arg_parser.add_argument('--max_span_size', type=int, default=10, help="Maximum size of spans")
-    arg_parser.add_argument('--lowercase', action='store_true', default=False,
-                            help="If true, input is lowercased during preprocessing")
+
     arg_parser.add_argument('--sampling_processes', type=int, default=4,
                             help="Number of sampling processes. 0 = no multiprocessing for sampling")
 
     # Model / Training / Evaluation
-    arg_parser.add_argument('--model_path', type=str, help="Path to directory that contains model checkpoints")
-    arg_parser.add_argument('--model_type', type=str, default="spert", help="Type of model")
+
+
     arg_parser.add_argument('--cpu', action='store_true', default=False,
                             help="If true, train/evaluate on CPU even if a CUDA device is available")
     arg_parser.add_argument('--eval_batch_size', type=int, default=1, help="Evaluation/Prediction batch size")
     arg_parser.add_argument('--max_pairs', type=int, default=1000,
                             help="Maximum entity pairs to process during training/evaluation")
     arg_parser.add_argument('--rel_filter_threshold', type=float, default=0.4, help="Filter threshold for relations")
-    arg_parser.add_argument('--size_embedding', type=int, default=25, help="Dimensionality of size embedding")
-    arg_parser.add_argument('--prop_drop', type=float, default=0.1, help="Probability of dropout used in SpERT")
-    arg_parser.add_argument('--freeze_transformer', action='store_true', default=False, help="Freeze BERT weights")
+
+
     arg_parser.add_argument('--no_overlapping', action='store_true', default=False,
                             help="If true, do not evaluate on overlapping entities "
                                  "and relations with overlapping entities")
 
-    # KL
-    arg_parser.add_argument('--subtype_classification', type=str, default='concat_logits', help="Span classifier type")
-    arg_parser.add_argument('--projection_size', type=int, default=100, help="Span classifier projection size")
-    arg_parser.add_argument('--projection_dropout', type=float, default=0.0, help="Span classifier projection dropout")
-    arg_parser.add_argument('--include_sent_task', action='store_true', default=False, help="Include sentence-level task")
-    arg_parser.add_argument('--include_word_piece_task', action='store_true', default=False, help="Include token-level task")
-    arg_parser.add_argument('--concat_sent_pred', action='store_true', default=False, help="Concatenate sentence-level predictions with CLS")
-    arg_parser.add_argument('--concat_word_piece_logits', action='store_true', default=False, help="Concatenate word piece logits")
-    arg_parser.add_argument('--include_adjacent', action='store_true', default=False, help="Include adjacent spans as context for entity extraction")
     arg_parser.add_argument('--device', type=int, default=None, help="GPU device")
 
 
@@ -50,7 +41,20 @@ def _add_common_args(arg_parser):
     arg_parser.add_argument('--debug', action='store_true', default=False, help="Debugging mode on/off")
 
 
-
+def _add_architecture_args(arg_parser):
+    arg_parser.add_argument('--model_type', type=str, default="spert", help="Type of model")
+    arg_parser.add_argument('--lowercase', action='store_true', default=False,
+                            help="If true, input is lowercased during preprocessing")
+    arg_parser.add_argument('--types_path', type=str, help="Path to type specifications")
+    arg_parser.add_argument('--size_embedding', type=int, default=25, help="Dimensionality of size embedding")
+    arg_parser.add_argument('--subtype_classification', type=str, default='concat_logits', help="Span classifier type")
+    arg_parser.add_argument('--include_sent_task', action='store_true', default=False, help="Include sentence-level task")
+    arg_parser.add_argument('--include_word_piece_task', action='store_true', default=False, help="Include token-level task")
+    arg_parser.add_argument('--concat_sent_pred', action='store_true', default=False, help="Concatenate sentence-level predictions with CLS")
+    arg_parser.add_argument('--concat_word_piece_logits', action='store_true', default=False, help="Concatenate word piece logits")
+    arg_parser.add_argument('--include_adjacent', action='store_true', default=False, help="Include adjacent spans as context for entity extraction")
+    arg_parser.add_argument('--prop_drop', type=float, default=0.1, help="Probability of dropout used in SpERT")
+    arg_parser.add_argument('--freeze_transformer', action='store_true', default=False, help="Freeze BERT weights")
 
 def _add_logging_args(arg_parser):
     arg_parser.add_argument('--label', type=str, help="Label of run. Used as the directory name of logs/models")
@@ -95,6 +99,7 @@ def train_argparser():
 
 
     _add_common_args(arg_parser)
+    _add_architecture_args(arg_parser)
     _add_logging_args(arg_parser)
 
     return arg_parser
@@ -103,11 +108,24 @@ def train_argparser():
 def eval_argparser():
     arg_parser = argparse.ArgumentParser()
 
+
     # Input
     arg_parser.add_argument('--dataset_path', type=str, help="Path to dataset")
 
     _add_common_args(arg_parser)
+
     _add_logging_args(arg_parser)
+
+
+    # for k, v in arg_parser.__dict__.items():
+    #     print()
+    #     print(k, v)
+    # z = sldkjf
+    #print()
+
+    # print('arg_parser_all' , arg_parser)
+
+
 
     return arg_parser
 

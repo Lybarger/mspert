@@ -19,10 +19,52 @@ from spert.evaluator import Evaluator
 from spert.input_reader import JsonInputReader, BaseInputReader
 from spert.loss import SpERTLoss, Loss
 from tqdm import tqdm
-from spert.trainer import BaseTrainer
+import json
+from spert.trainer import BaseTrainer, TYPES_FILE, CONFIG_FILE
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 
+
+
+def get_saved_config(args, logger):
+
+    logger.info(f"")
+    logger.info(f"-"*80)
+    logger.info(f"Loading saved config")
+    logger.info(f"-"*80)
+
+    types_path = os.path.join(args.model_path, TYPES_FILE)
+    config_path = os.path.join(args.model_path, CONFIG_FILE)
+
+    assert os.path.exists(types_path), f"Cannot find saved types file at: {types_path}"
+    assert os.path.exists(config_path), f"Cannot find saved types file at: {config_path}"
+
+    logger.info(f"Configuration files found:")
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    logger.info(f"\tconfig_path:      {config_path}")
+    # logger.info(f"Loaded parameters: {list(config.keys())}")
+
+    logger.info(f"\ttypes_path:       {types_path}")
+
+    logger.info(f"Arguments defined at input:")
+    for k, v in vars(args).items():
+        logger.info(f"\t{k} = {v}")
+
+    logger.info(f"Arguments defined from saved config:")
+    logger.info(f"(not all are relevant to evaluation or prediction)")
+    for k, v in config.items():
+        if hasattr(args, k):
+            pass
+        else:
+            setattr(args, k, v)
+            logger.info(f"\t{k} = {v}")
+
+    logger.info(f"Arguments overwritten:")
+    args.types_path = types_path
+    logger.info(f"\t{'types_path'} = {types_path}")
+
+    logger.info(f"-"*80)
 
 class SpERTTrainer(BaseTrainer):
     """ Joint entity and relation extraction training and evaluation """
@@ -30,13 +72,16 @@ class SpERTTrainer(BaseTrainer):
     def __init__(self, args: argparse.Namespace):
         super().__init__(args)
 
+
+
+    def train(self, train_path: str, valid_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
+        args = self._args
+
         # byte-pair encoding
         self._tokenizer = BertTokenizer.from_pretrained(args.tokenizer_path,
                                                         do_lower_case=args.lowercase,
                                                         cache_dir=args.cache_path)
 
-    def train(self, train_path: str, valid_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
-        args = self._args
         train_label, valid_label = 'train', 'valid'
 
         self._logger.info("Datasets: %s, %s" % (train_path, valid_path))
@@ -119,7 +164,9 @@ class SpERTTrainer(BaseTrainer):
         global_iteration = args.epochs * updates_epoch
         self._save_model(self._save_path, model, self._tokenizer, global_iteration,
                          optimizer=optimizer if self._args.save_optimizer else None, extra=extra,
-                         include_iteration=False, name='final_model')
+                         include_iteration=False, name='final_model',
+                         types_path=types_path,
+                         args=self._args)
 
         self._logger.info("Logged in: %s" % self._log_path)
         self._logger.info("Saved in: %s" % self._save_path)
@@ -127,8 +174,19 @@ class SpERTTrainer(BaseTrainer):
 
         return (predictions_path)
 
-    def eval(self, dataset_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
+    # def eval(self, dataset_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
+    def eval(self, dataset_path: str, input_reader_cls: Type[BaseInputReader]):
+
+        # Load saved configuration
+        get_saved_config(self._args, self._logger)
+
         args = self._args
+
+        # byte-pair encoding
+        self._tokenizer = BertTokenizer.from_pretrained(args.tokenizer_path,
+                                                        do_lower_case=args.lowercase,
+                                                        cache_dir=args.cache_path)
+
         dataset_label = 'test'
 
         self._logger.info("Dataset: %s" % dataset_path)
@@ -138,7 +196,7 @@ class SpERTTrainer(BaseTrainer):
         self._init_eval_logging(dataset_label)
 
         # read datasets
-        input_reader = input_reader_cls(types_path, self._tokenizer,
+        input_reader = input_reader_cls(args.types_path, self._tokenizer,
                                         max_span_size=args.max_span_size, logger=self._logger)
         test_dataset = input_reader.read(dataset_path, dataset_label)
         self._log_datasets(input_reader)
@@ -155,6 +213,11 @@ class SpERTTrainer(BaseTrainer):
 
     def predict(self, dataset_path: str, types_path: str, input_reader_cls: Type[BaseInputReader]):
         args = self._args
+
+        # byte-pair encoding
+        self._tokenizer = BertTokenizer.from_pretrained(args.tokenizer_path,
+                                                        do_lower_case=args.lowercase,
+                                                        cache_dir=args.cache_path)
 
         # read datasets
         input_reader = input_reader_cls(types_path, self._tokenizer,
@@ -189,8 +252,6 @@ class SpERTTrainer(BaseTrainer):
                                             freeze_transformer = self._args.freeze_transformer,
                                             subtype_classification = self._args.subtype_classification,
                                             concat_sent_pred = self._args.concat_sent_pred,
-                                            projection_size = self._args.projection_size,
-                                            projection_dropout = self._args.projection_dropout,
                                             include_adjacent = self._args.include_adjacent,
                                             include_word_piece_task = self._args.include_word_piece_task,
                                             concat_word_piece_logits = self._args.concat_word_piece_logits,
@@ -214,7 +275,7 @@ class SpERTTrainer(BaseTrainer):
         iteration = 0
         total = dataset.document_count // self._args.train_batch_size
         for batch in tqdm(data_loader, total=total, desc='Train epoch %s' % epoch):
-            # for batch in data_loader:            
+            # for batch in data_loader:
             model.train()
             batch = util.to_device(batch, self._device)
 

@@ -4,8 +4,10 @@ import logging
 import os
 import sys
 from typing import List, Dict, Tuple
-
+import shutil
+import json
 import torch
+import copy
 from torch.nn import DataParallel
 from torch.optim import Optimizer
 from transformers import PreTrainedModel
@@ -15,6 +17,10 @@ from spert import util
 from spert.opt import tensorboardX
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
+
+
+TYPES_FILE = "spert_types.json"
+CONFIG_FILE = "spert_args.json"
 
 
 class BaseTrainer:
@@ -116,7 +122,8 @@ class BaseTrainer:
 
     def _save_model(self, save_path: str, model: PreTrainedModel, tokenizer: PreTrainedTokenizer,
                     iteration: int, optimizer: Optimizer = None, save_as_best: bool = False,
-                    extra: dict = None, include_iteration: int = True, name: str = 'model'):
+                    extra: dict = None, include_iteration: int = True, name: str = 'model',
+                    types_path = None, args = None):
         extra_state = dict(iteration=iteration)
 
         if optimizer:
@@ -147,6 +154,19 @@ class BaseTrainer:
         # save extra
         state_path = os.path.join(dir_path, 'extra.state')
         torch.save(extra_state, state_path)
+
+
+        # save types path locally
+        if types_path is not None:
+            types_path_new = os.path.join(save_path, TYPES_FILE)
+            shutil.copy(types_path, types_path_new)
+
+        if args is not None:
+            args = copy.deepcopy(args)
+            args.types_path = types_path_new
+            file = os.path.join(save_path, CONFIG_FILE)
+            with open(file, 'w') as f:
+                json.dump(vars(args), f, indent=4)
 
     def _get_lr(self, optimizer):
         lrs = []

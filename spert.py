@@ -24,8 +24,9 @@ def _eval():
 
 def __eval(run_args):
     trainer = SpERTTrainer(run_args)
-    trainer.eval(dataset_path=run_args.dataset_path, types_path=run_args.types_path,
-                 input_reader_cls=input_reader.JsonInputReader)
+    # trainer.eval(dataset_path=run_args.dataset_path, types_path=run_args.types_path,
+    #              input_reader_cls=input_reader.JsonInputReader)
+    trainer.eval(dataset_path=run_args.dataset_path, input_reader_cls=input_reader.JsonInputReader)
 
 
 def _predict():
