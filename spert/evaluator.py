@@ -260,7 +260,8 @@ class Evaluator:
 
             sample_gt_relations = [rel.as_tuple() for rel in gt_relations]
 
-            if self._no_overlapping:
+            # if self._no_overlapping:
+            if False:
                 # for layer_name,
                 # sample_gt_subtypes, _ = prediction.remove_overlapping(sample_gt_subtypes,
                 #                                                                         sample_gt_relations)
