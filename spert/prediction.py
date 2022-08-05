@@ -118,6 +118,8 @@ def convert_predictions( \
             # iterate over spans
             for i_span, (start, end, entity, score) in enumerate(pred_subtypes):
 
+                assert end > start, f"start={start}, end={end}"
+
                 # first layer
                 if i_layer == 0:
                     y = OrderedDict()
@@ -513,6 +515,8 @@ def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, p
             # subtype (start, end, ent_dict)
             #   end_dict {layer_name: EntityType, layer_name: EntityType, }
             start, end, ent_dict = subtype
+            assert end > start, f"{start} vs {end}"
+
 
             # subtype_span = subtype[:2]
             subtype_span = (start, end)
@@ -522,7 +526,12 @@ def store_predictions(documents, pred_entities, pred_subtypes, pred_relations, p
             # subtype_type = subtype[2].identifier
             subtype_type = OrderedDict([(layer_name, entity.identifier) for layer_name, entity in ent_dict.items()])
 
-            converted_subtype = dict(type=subtype_type, start=span_tokens[0].index, end=span_tokens[-1].index + 1)
+
+            start_index = span_tokens[0].index
+            end_index =   span_tokens[-1].index + 1
+            assert end_index > start_index, f"{start_index} vs {end_index}"
+
+            converted_subtype = dict(type=subtype_type, start=start_index, end=end_index)
             converted_subtypes.append(converted_subtype)
 
         converted_subtypes = sorted(converted_subtypes, key=lambda e: e['start'])

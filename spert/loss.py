@@ -106,8 +106,13 @@ class SpERTLoss(Loss):
                 # scalar
                 sub_loss = (sub_loss * entity_sample_masks).sum() / entity_sample_masks.sum()
 
+                # if layer_name == 'Assertion':
+
                 # collect loss across layers
                 subtype_loss.append(sub_loss)
+
+
+
 
             # calculate total subtype loss
             subtype_loss = torch.stack(subtype_loss)
