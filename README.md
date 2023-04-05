@@ -30,7 +30,7 @@ PyTorch code for mSpERT: "Span-based Entity and Relation Transformer". For a des
 Fetch converted (to specific JSON format) CoNLL04 \[1\] (we use the same split as \[4\]), SciERC \[2\] and ADE \[3\] datasets (see referenced papers for the original datasets):
 ```
 bash ./scripts/fetch_datasets.sh
-```
+``` 
 
 Fetch model checkpoints (best out of 5 runs for each dataset):
 ```
