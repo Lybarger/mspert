@@ -1,9 +1,7 @@
 # Multi-label Span-based Entity and Relation Transformer (mSpERT)
-This repository contains the Pipeline code for training and evaluating the mSpERT model. mSpERT is an augmented version of the original [Span-based Entity and Relation Transformer](https://ebooks.iospress.nl/volumearticle/55116) (SpERT) model developed by Eberts and Ulges [1]. SpERT jointly extracts entities and relations using BERT with output layers that classify spans and predict span relations. SpERT's span-based architecture allows overlapping span predictions but only allows a single label to be assigned to each span; however, annoataion schemes may assign multiple labels to a single span. We added additional classification layer is to SpERT to accommodate multi-label span predictions. Figure 1 presents the mSpERT framework, which includes three classification layers: 1) Entity Type, 2) Entity Subtype, and 3) Relation. The input is a sentence, and the output is extracted events. The Entity Type and Relation layers are identical to the original SpERT, and the Entity Subtype layer is incorporated to generate multi-label span predictions.  
+This repository contains the Pipeline code for training and evaluating the mSpERT model. mSpERT is an augmented version of the original [Span-based Entity and Relation Transformer](https://ebooks.iospress.nl/volumearticle/55116) (SpERT) model developed by Eberts and Ulges [1]. SpERT jointly extracts entities and relations using BERT with output layers that classify spans and predict span relations. SpERT's span-based architecture allows overlapping span predictions but only allows a single label to be assigned to each span; however, annoataion schemes may assign multiple labels to a single span. We added additional classification layers to SpERT to accommodate multi-label span predictions. Figure 1 presents the mSpERT framework, which includes three classification layers: 1) Entity Type, 2) Entity Subtype, and 3) Relation.  The Entity Type and Relation layers are identical to the original SpERT, and the Entity Subtype layer is incorporated to generate multi-label span predictions. The example in Figure 1 is from out Social Determinant of Health (SDOH) event extraction work [2].
 
-
-
-![plot](figures/spert_multilabel.drawio.png)
+![Figure 1](figures/spert_multilabel.drawio.png)
 
 
 https://github.com/lavis-nlp/spert
@@ -63,3 +61,6 @@ Markus Eberts, Adrian Ulges. Span-based Joint Entity and Relation Extraction wit
 ## References
 ```
 1. Eberts M, Ulges A. Span-Based Joint Entity and Relation Extraction with Transformer Pre-Training. In: European Conference on Artificial Intelligence; 2020. p. 2006-13. Available from: [https://ebooks.iospress.nl/volumearticle/55116](https://ebooks.iospress.nl/volumearticle/55116).
+2. K. Lybarger*, N. J. Dobbins*, R. Long, A. Singh, P.Wedgeworth, O. Ozuner, and M. Yetisgen. Leveraging natural language processing to augment structured social determinants of health data in the electronic health record. under review, 2023. doi: [10.48550/arXiv.2212.07538](https://doi.org/10.48550/arXiv.2212.07538).
+
+*Authors contributed equally.
