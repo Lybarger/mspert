@@ -45,7 +45,6 @@ python ./spert.py eval --config configs/example_eval.conf
 ```
 python ./spert.py predict --config configs/example_predict.conf
 ```
-
 ## References
 1. Eberts M, Ulges A. Span-Based Joint Entity and Relation Extraction with Transformer Pre-Training. In: European Conference on Artificial Intelligence; 2020. p. 2006-13. Available from: [https://ebooks.iospress.nl/volumearticle/55116](https://ebooks.iospress.nl/volumearticle/55116).
 2. K. Lybarger*, N. J. Dobbins*, R. Long, A. Singh, P.Wedgeworth, O. Ozuner, and M. Yetisgen. Leveraging natural language processing to augment structured social determinants of health data in the electronic health record. under review, 2023. doi: [10.48550/arXiv.2212.07538](https://doi.org/10.48550/arXiv.2212.07538).
