@@ -473,6 +473,7 @@ class SpERT(BertPreTrainedModel):
         return batch_relations, batch_rel_masks, batch_rel_sample_masks
 
     def forward(self, *args, inference=False, **kwargs):
+
         if not inference:
             return self._forward_train(*args, **kwargs)
         else:

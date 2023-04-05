@@ -12,6 +12,8 @@ from spert import util
 from spert.entities import Dataset, EntityType, RelationType, Entity, Relation, Document
 from spert.opt import spacy
 
+MAX_LENGTH = 512
+
 
 class BaseInputReader(ABC):
     def __init__(self, types_path: str, tokenizer: BertTokenizer, neg_entity_count: int = None,
@@ -247,12 +249,19 @@ class JsonInputReader(BaseInputReader):
         # parse tokens
         doc_tokens, doc_encoding = _parse_tokens(jtokens, dataset, self._tokenizer)
 
+        
+
+        assert len(doc_tokens) <= MAX_LENGTH
+        assert len(doc_encoding) <= MAX_LENGTH
+
         # parse entity mentions
         entities, subtypes = self._parse_entities(jentities, jsubtypes, doc_tokens, dataset)
 
-
         # parse relations
         relations = self._parse_relations(jrelations, entities, dataset)
+
+        
+
 
         sent_labels = self._parse_sent_labels(jsent_labels)
 
@@ -352,6 +361,14 @@ class JsonInputReader(BaseInputReader):
             head = entities[head_idx]
             tail = entities[tail_idx]
 
+            head_start, head_end = head.span
+            tail_start, tail_end = tail.span
+
+
+            # print(head_start, head_end, tail_start, tail_end)
+            #print(head._tokens, head.span_start, head.span_end)
+
+
             reverse = int(tail.tokens[0].index) < int(head.tokens[0].index)
 
             # for symmetric relations: head occurs before tail in sentence
@@ -409,6 +426,7 @@ def _parse_tokens(jtokens, dataset, tokenizer):
 
     # parse tokens
     for i, token_phrase in enumerate(jtokens):
+
         token_encoding = tokenizer.encode(token_phrase, add_special_tokens=False)
         if not token_encoding:
             token_encoding = [tokenizer.convert_tokens_to_ids('[UNK]')]
@@ -416,8 +434,11 @@ def _parse_tokens(jtokens, dataset, tokenizer):
 
         token = dataset.create_token(i, span_start, span_end, token_phrase)
 
-        doc_tokens.append(token)
-        doc_encoding += token_encoding
+        # Avoid exceed max BERT length
+        if len(doc_encoding) + len(token_encoding) < MAX_LENGTH - 1:
+
+            doc_tokens.append(token)
+            doc_encoding += token_encoding
 
     doc_encoding += [tokenizer.convert_tokens_to_ids('[SEP]')]
 
