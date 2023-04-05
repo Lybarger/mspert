@@ -1,7 +1,8 @@
 # Multi-label Span-based Entity and Relation Transformer
 This repository contains the code for training and evaluating the Multi-label Span-based Entity and Relation Transformer (mSpERT) model. mSpERT is an augmented version of the original [Span-based Entity and Relation Transformer](https://ebooks.iospress.nl/volumearticle/55116) (SpERT) model developed by Eberts and Ulges [1]. SpERT jointly extracts entities and relations using BERT with output layers that classify spans and predict span relations. SpERT's span-based architecture allows overlapping span predictions but only allows a single label to be assigned to each span; however, annoataion schemes may assign multiple labels to a single span. We added additional classification layers to SpERT to accommodate multi-label span predictions. Figure 1 presents the mSpERT framework, which includes three classification layers: 1) Entity Type, 2) Entity Subtype, and 3) Relation.  The Entity Type and Relation layers are identical to the original SpERT, and the Entity Subtype layer is incorporated to generate multi-label span predictions. The example in Figure 1 is from out Social Determinant of Health (SDOH) event extraction work [2]. mSpERT was developed by cloning the [original SpERT GitHub repository](https://github.com/lavis-nlp/spert).
 
-![Figure 1](figures/spert_multilabel.drawio.png)
+<img src="figures/spert_multilabel.drawio.png" width=75% height=75%>
+**Figure 1: Multi-label Span-based Entity and Relation Transformer (mSpERT)**
 
 
 ## Setup
