@@ -1,13 +1,8 @@
 # Multi-label Span-based Entity and Relation Transformer (mSpERT)
-This repository contains the Pipeline code for training and evaluating the mSpERT model. mSpERT is an augmented version of the original [Span-based Entity and Relation Transformer](https://ebooks.iospress.nl/volumearticle/55116) (SpERT) model developed by Eberts and Ulges [1]. SpERT jointly extracts entities and relations using BERT with output layers that classify spans and predict span relations. SpERT's span-based architecture allows overlapping span predictions but only allows a single label to be assigned to each span; however, annoataion schemes may assign multiple labels to a single span. We added additional classification layers to SpERT to accommodate multi-label span predictions. Figure 1 presents the mSpERT framework, which includes three classification layers: 1) Entity Type, 2) Entity Subtype, and 3) Relation.  The Entity Type and Relation layers are identical to the original SpERT, and the Entity Subtype layer is incorporated to generate multi-label span predictions. The example in Figure 1 is from out Social Determinant of Health (SDOH) event extraction work [2].
+This repository contains the Pipeline code for training and evaluating the mSpERT model. mSpERT is an augmented version of the original [Span-based Entity and Relation Transformer](https://ebooks.iospress.nl/volumearticle/55116) (SpERT) model developed by Eberts and Ulges [1]. SpERT jointly extracts entities and relations using BERT with output layers that classify spans and predict span relations. SpERT's span-based architecture allows overlapping span predictions but only allows a single label to be assigned to each span; however, annoataion schemes may assign multiple labels to a single span. We added additional classification layers to SpERT to accommodate multi-label span predictions. Figure 1 presents the mSpERT framework, which includes three classification layers: 1) Entity Type, 2) Entity Subtype, and 3) Relation.  The Entity Type and Relation layers are identical to the original SpERT, and the Entity Subtype layer is incorporated to generate multi-label span predictions. The example in Figure 1 is from out Social Determinant of Health (SDOH) event extraction work [2]. mSpERT was developed by cloning the [original SpERT GitHub repository](https://github.com/lavis-nlp/spert).
 
 ![Figure 1](figures/spert_multilabel.drawio.png)
 
-https://github.com/lavis-nlp/spert
-
-PyTorch code for mSpERT: "Span-based Entity and Relation Transformer". For a description of the model and experiments, see our paper: https://ebooks.iospress.nl/volumearticle/55116 (accepted at ECAI 2020).
-
-![alt text](http://deepca.cs.hs-rm.de/img/deepca/spert.png)
 
 ## Setup
 ### Requirements
@@ -51,15 +46,8 @@ python ./spert.py eval --config configs/example_eval.conf
 python ./spert.py predict --config configs/example_predict.conf
 ```
 
-## Notes
-- To train SpERT with SciBERT \[5\] download SciBERT from https://github.com/allenai/scibert (under "PyTorch HuggingFace Models") and set "model_path" and "tokenizer_path" in the config file to point to the SciBERT directory.
-- You can call "python ./spert.py train --help" / "python ./spert.py eval --help" "python ./spert.py predict --help" for a description of training/evaluation/prediction arguments.
-- Please cite our paper when you use SpERT: <br/>
-Markus Eberts, Adrian Ulges. Span-based Joint Entity and Relation Extraction with Transformer Pre-training. 24th European Conference on Artificial Intelligence, 2020.
-
 ## References
-```
-[1] Eberts M, Ulges A. Span-Based Joint Entity and Relation Extraction with Transformer Pre-Training. In: European Conference on Artificial Intelligence; 2020. p. 2006-13. Available from: [https://ebooks.iospress.nl/volumearticle/55116](https://ebooks.iospress.nl/volumearticle/55116).
-[2] K. Lybarger*, N. J. Dobbins*, R. Long, A. Singh, P.Wedgeworth, O. Ozuner, and M. Yetisgen. Leveraging natural language processing to augment structured social determinants of health data in the electronic health record. under review, 2023. doi: [10.48550/arXiv.2212.07538](https://doi.org/10.48550/arXiv.2212.07538).
+1. Eberts M, Ulges A. Span-Based Joint Entity and Relation Extraction with Transformer Pre-Training. In: European Conference on Artificial Intelligence; 2020. p. 2006-13. Available from: [https://ebooks.iospress.nl/volumearticle/55116](https://ebooks.iospress.nl/volumearticle/55116).
+2. K. Lybarger*, N. J. Dobbins*, R. Long, A. Singh, P.Wedgeworth, O. Ozuner, and M. Yetisgen. Leveraging natural language processing to augment structured social determinants of health data in the electronic health record. under review, 2023. doi: [10.48550/arXiv.2212.07538](https://doi.org/10.48550/arXiv.2212.07538).
 
 *Authors contributed equally.
