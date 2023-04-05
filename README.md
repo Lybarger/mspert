@@ -3,7 +3,6 @@ This repository contains the Pipeline code for training and evaluating the mSpER
 
 ![Figure 1](figures/spert_multilabel.drawio.png)
 
-
 https://github.com/lavis-nlp/spert
 
 PyTorch code for mSpERT: "Span-based Entity and Relation Transformer". For a description of the model and experiments, see our paper: https://ebooks.iospress.nl/volumearticle/55116 (accepted at ECAI 2020).
